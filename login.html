@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>로그인 — 채움 운영 대시보드</title>
+<script src="auth.js"></script>
+<script>(function(){if(authGetSession())window.location.replace('index.html');})();</script>
+<style>
+:root {
+  --bg:#f5f7fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  --primary:#2563eb; --good:#16a34a; --bad:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;
+  background:var(--bg);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+  color:var(--ink);
+  padding:20px;
+}
+.login-wrap{width:100%;max-width:400px}
+
+.brand{text-align:center;margin-bottom:24px}
+.brand-icon{font-size:48px;line-height:1;margin-bottom:10px}
+.brand-name{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.brand-sub{color:var(--muted);font-size:13px;margin-top:5px}
+
+.login-card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:28px 24px 24px;
+  box-shadow:0 4px 24px rgba(15,23,42,.08);
+}
+
+.role-toggle{
+  display:flex;
+  background:#f1f5f9;
+  border-radius:10px;
+  padding:4px;
+  margin-bottom:22px;
+  gap:2px;
+}
+.role-btn{
+  flex:1;
+  padding:9px 0;
+  border:none;
+  background:transparent;
+  border-radius:7px;
+  font-size:14px;
+  font-weight:500;
+  color:var(--muted);
+  cursor:pointer;
+  transition:all .15s;
+  font-family:inherit;
+}
+.role-btn.active{
+  background:#fff;
+  color:var(--ink);
+  box-shadow:0 1px 4px rgba(15,23,42,.1);
+  font-weight:600;
+}
+
+.field{margin-bottom:14px}
+.field label{
+  display:block;
+  font-size:11px;
+  font-weight:600;
+  color:var(--muted);
+  margin-bottom:6px;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+.field input{
+  width:100%;
+  padding:11px 14px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  font-size:14px;
+  font-family:inherit;
+  color:var(--ink);
+  background:#fff;
+  outline:none;
+  transition:border-color .15s, box-shadow .15s;
+}
+.field input:focus{
+  border-color:var(--primary);
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+
+.viewer-hint{
+  font-size:12px;
+  color:var(--muted);
+  margin-top:-4px;
+  margin-bottom:14px;
+  padding:8px 12px;
+  background:#f8fafc;
+  border-radius:6px;
+  border-left:3px solid var(--line);
+  line-height:1.5;
+}
+
+.error-msg{
+  background:#fef2f2;
+  color:var(--bad);
+  border:1px solid #fecaca;
+  border-radius:8px;
+  padding:10px 14px;
+  font-size:13px;
+  margin-bottom:14px;
+  display:none;
+}
+
+.login-btn{
+  width:100%;
+  padding:12px 0;
+  background:var(--primary);
+  color:#fff;
+  border:none;
+  border-radius:8px;
+  font-size:15px;
+  font-weight:600;
+  font-family:inherit;
+  cursor:pointer;
+  transition:background .15s, opacity .15s;
+  margin-top:4px;
+}
+.login-btn:hover{background:#1d4ed8}
+.login-btn:disabled{opacity:.55;cursor:not-allowed}
+
+.footer-note{
+  text-align:center;
+  font-size:12px;
+  color:var(--muted);
+  margin-top:20px;
+}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+
+  <div class="brand">
+    <div class="brand-icon">🍽️</div>
+    <div class="brand-name">구내식당(채움)</div>
+    <div class="brand-sub">운영 대시보드</div>
+  </div>
+
+  <div class="login-card">
+    <div class="role-toggle">
+      <button class="role-btn active" id="adminBtn" onclick="switchMode('admin')">🔑 관리자</button>
+      <button class="role-btn" id="viewerBtn" onclick="switchMode('viewer')">👁 열람</button>
+    </div>
+
+    <!-- 관리자 폼 -->
+    <div id="adminForm">
+      <div class="field">
+        <label>아이디</label>
+        <input type="text" id="adminId" placeholder="관리자 아이디" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>비밀번호</label>
+        <input type="password" id="adminPw" placeholder="비밀번호" autocomplete="current-password">
+      </div>
+    </div>
+
+    <!-- 열람 폼 -->
+    <div id="viewerForm" style="display:none">
+      <div class="field">
+        <label>열람 비밀번호</label>
+        <input type="password" id="viewerPw" placeholder="열람 비밀번호 입력" autocomplete="current-password">
+      </div>
+      <div class="viewer-hint">열람 모드에서는 데이터 조회 및 PDF 다운로드만 가능합니다.<br>데이터 업로드·수정은 관리자 모드에서 이용하세요.</div>
+    </div>
+
+    <div class="error-msg" id="loginError"></div>
+
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">로그인</button>
+  </div>
+
+  <div class="footer-note">ⓒ 2026 채움 구내식당 운영팀</div>
+</div>
+
+<script>
+let _mode = 'admin';
+
+function switchMode(mode) {
+  _mode = mode;
+  document.getElementById('adminForm').style.display  = mode === 'admin' ? '' : 'none';
+  document.getElementById('viewerForm').style.display = mode === 'viewer' ? '' : 'none';
+  document.getElementById('adminBtn').className = 'role-btn' + (mode === 'admin' ? ' active' : '');
+  document.getElementById('viewerBtn').className = 'role-btn' + (mode === 'viewer' ? ' active' : '');
+  document.getElementById('loginError').style.display = 'none';
+  const target = mode === 'admin' ? 'adminId' : 'viewerPw';
+  setTimeout(() => { const el = document.getElementById(target); if (el) el.focus(); }, 0);
+}
+
+async function doLogin() {
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = '확인 중...';
+
+  const id = _mode === 'admin' ? document.getElementById('adminId').value.trim() : '';
+  const pw = _mode === 'admin'
+    ? document.getElementById('adminPw').value
+    : document.getElementById('viewerPw').value;
+
+  const role = await authLogin(id, pw);
+
+  if (role) {
+    window.location.replace('index.html');
+  } else {
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = _mode === 'admin'
+      ? '아이디 또는 비밀번호가 올바르지 않습니다.'
+      : '비밀번호가 올바르지 않습니다.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '로그인';
+    const focusEl = document.getElementById(_mode === 'admin' ? 'adminPw' : 'viewerPw');
+    if (focusEl) { focusEl.select(); focusEl.focus(); }
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.addEventListener('DOMContentLoaded', () => { document.getElementById('adminId').focus(); });
+</script>
+</body>
+</html>
