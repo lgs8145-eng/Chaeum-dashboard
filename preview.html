@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[미리보기] 구내식당(채움) 운영 대시보드</title>
+<script>
+/* 미리보기 모드 — 인증 우회 (로그인 설정 완료 후 이 파일 삭제) */
+function authGetSession()       { return Promise.resolve({ ok: true, role: 'viewer' }); }
+function authIsAdmin()          { return false; }
+function authLogout()           { window.location.replace('login.html'); }
+function authChangePasswords()  { return Promise.resolve('error'); }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="excel-parser.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#f5f7fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  --primary:#2563eb; --good:#16a34a; --bad:#dc2626; --warn:#d97706;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+  background:var(--bg);color:var(--ink);line-height:1.45}
+.shell{max-width:1320px;margin:0 auto;padding:28px 24px 60px}
+
+/* ── Header ── */
+.header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:22px;flex-wrap:wrap;gap:12px}
+.title{font-size:24px;font-weight:700;letter-spacing:-.3px}
+.subtitle{color:var(--muted);font-size:13px;margin-top:4px}
+.header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.period-tabs{display:flex;gap:6px;background:#fff;padding:4px;border-radius:10px;border:1px solid var(--line);flex-wrap:wrap}
+.tab{padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;color:var(--muted);font-weight:500;transition:all .15s;white-space:nowrap}
+.tab:hover{background:#f1f5f9;color:var(--ink)}
+.tab.active{background:var(--primary);color:#fff}
+
+/* 업로드 버튼 */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;
+  font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:#1d4ed8}
+.btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary)}
+.btn-outline:hover{background:#eff6ff}
+.btn-ghost{background:#f1f5f9;color:var(--muted);border:1px solid var(--line)}
+.btn-ghost:hover{background:#e2e8f0}
+.btn-danger{background:#fff;color:var(--bad);border:1px solid #fecaca}
+.btn-danger:hover{background:#fef2f2}
+
+/* ── Section labels ── */
+.section-label{font-size:15px;font-weight:700;color:var(--ink);margin:28px 0 12px;
+  padding:10px 16px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--primary);
+  border-radius:0 8px 8px 0}
+
+/* ── KPI cards ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;
+  box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.kpi .lbl{font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px}
+.kpi .val{font-size:26px;font-weight:700;letter-spacing:-.5px}
+.kpi .unit{font-size:13px;font-weight:500;color:var(--muted);margin-left:2px}
+.kpi .delta{font-size:12px;margin-top:6px;display:inline-flex;align-items:center;gap:3px;font-weight:600}
+.delta.up{color:var(--bad)} .delta.down{color:var(--good)} .delta.flat{color:var(--muted)}
+
+/* ── Layout ── */
+.row{display:grid;gap:14px;margin-bottom:14px}
+.row.cols-1{grid-template-columns:1fr}
+.row.cols-2{grid-template-columns:1.4fr 1fr}
+.row.cols-2b{grid-template-columns:1fr 1.2fr}
+.row.cols-2c{grid-template-columns:1fr 1fr}
+.row.cols-3{grid-template-columns:1fr 1fr 1fr}
+
+/* ── Cards ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.card h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.card .desc{color:var(--muted);font-size:12px;margin-bottom:14px}
+.chart-wrap{position:relative;height:210px}
+.chart-wrap.tall{height:250px}
+.chart-wrap.short{height:160px}
+
+/* ── Tables ── */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+th{background:#f8fafc;font-weight:600;color:var(--muted);font-size:11.5px;letter-spacing:.3px;text-transform:uppercase}
+th:first-child,td:first-child{text-align:left}
+tbody tr:hover{background:#f8fafc}
+tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
+
+/* ── Pills ── */
+.pill{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.pill.up{background:#fee2e2;color:#991b1b}
+.pill.down{background:#dcfce7;color:#166534}
+.pill.flat{background:#e2e8f0;color:#475569}
+.pill.blue{background:#dbeafe;color:#1d4ed8}
+
+/* ── Compare grid ── */
+.compare-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px}
+.compare-cell{padding:12px;background:#f8fafc;border-radius:10px}
+.compare-cell .name{font-size:12px;color:var(--muted)}
+.compare-cell .now{font-size:18px;font-weight:700;margin-top:4px}
+.compare-cell .vs{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ── Notes ── */
+.note{background:#fef3c7;border-left:3px solid var(--warn);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#78350f;margin-top:10px}
+.note-blue{background:#eff6ff;border-left:3px solid var(--primary);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#1e40af;margin-top:10px}
+
+/* ── Metric cards ── */
+.metric-card{padding:14px 18px;border-radius:10px;transition:all .15s;position:relative;cursor:pointer}
+.metric-card:hover{background:rgba(255,255,255,.6);transform:translateY(-1px);box-shadow:0 2px 8px rgba(30,64,175,.15)}
+.metric-card::after{content:'🔍';position:absolute;top:8px;right:10px;font-size:12px;opacity:0;transition:opacity .15s}
+.metric-card:hover::after{opacity:.6}
+
+/* ── 업로드 드래그존 ── */
+.drop-zone{border:2px dashed #bfdbfe;background:#f0f9ff;border-radius:12px;
+  padding:40px 24px;text-align:center;transition:all .2s;cursor:pointer}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--primary);background:#dbeafe}
+.drop-zone .icon{font-size:40px;margin-bottom:10px}
+.drop-zone .main-text{font-size:15px;font-weight:600;color:#1e40af;margin-bottom:6px}
+.drop-zone .sub-text{font-size:13px;color:var(--muted)}
+
+/* 업로드 결과 */
+.upload-result{display:none;border-radius:10px;padding:14px 16px;margin-top:14px;font-size:13.5px}
+.upload-result.success{background:#dcfce7;border:1px solid #86efac;color:#166534;display:block}
+.upload-result.error{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;display:block}
+.upload-result.info{background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;display:block}
+
+/* 등록된 월 목록 */
+.month-list-item{display:flex;justify-content:space-between;align-items:center;
+  padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:13px}
+.month-list-item .badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+.badge-base{background:#e2e8f0;color:#475569}
+.badge-upload{background:#dbeafe;color:#1d4ed8}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;
+  align-items:center;justify-content:center;z-index:1000;padding:24px;backdrop-filter:blur(4px)}
+.modal-overlay.show{display:flex}
+.modal{background:#fff;border-radius:14px;max-width:820px;width:100%;max-height:92vh;
+  overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.25);animation:slideUp .25s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;
+  justify-content:space-between;align-items:flex-start;position:sticky;top:0;
+  background:#fff;border-radius:14px 14px 0 0;z-index:5}
+.modal-header h2{margin:0;font-size:18px;font-weight:700}
+.modal-header .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);
+  padding:0;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.modal-close:hover{background:#f1f5f9}
+.modal-body{padding:20px 24px}
+.formula-box{background:linear-gradient(135deg,#eff6ff,#fef3c7);border:1px solid #bfdbfe;
+  border-radius:10px;padding:16px;margin-bottom:18px;text-align:center}
+.formula-box .formula{font-size:15px;font-weight:600;color:#1e40af;font-family:monospace}
+.formula-box .result{font-size:24px;font-weight:700;color:#1e40af;margin-top:8px}
+.modal-section{margin-top:18px}
+.modal-section h4{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.4px}
+
+/* ── PDF 인쇄 토스트 ── */
+@keyframes fadeInDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+.pdf-toast{position:fixed;top:24px;right:24px;z-index:5000;background:#1e40af;color:#fff;
+  padding:14px 20px;border-radius:12px;font-size:14px;font-weight:600;
+  box-shadow:0 8px 28px rgba(30,64,175,.35);display:flex;align-items:center;gap:12px;
+  animation:fadeInDown .3s ease}
+.pdf-toast.hiding{animation:fadeOut .3s ease forwards}
+.pdf-toast-icon{font-size:22px}
+.pdf-toast-title{font-size:14px;font-weight:700;line-height:1.3}
+.pdf-toast-sub{font-size:12px;font-weight:400;opacity:.8;margin-top:2px}
+.pdf-toast strong{font-weight:700;opacity:1}
+
+/* ══ 인쇄 / PDF 출력 스타일 ══════════════════════════ */
+@media print {
+  @page { size: A4 landscape; margin: 11mm 9mm 9mm; }
+
+  /* 색상 강제 출력 */
+  * { -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important; }
+
+  /* UI 크롬 숨김 */
+  .header-actions, .pdf-toast,
+  #pdfOverlay, #uploadModal, #kpiModal, #pwModal { display: none !important; }
+
+  body { background: #f5f7fb !important; margin: 0; }
+  .shell { max-width: 100% !important; padding: 0 !important; }
+
+  /* 헤더 */
+  .header { margin-bottom: 12px; padding-bottom: 7px; border-bottom: 3px solid #2563eb; }
+  .title  { font-size: 19px !important; }
+  .subtitle { font-size: 11px !important; }
+
+  /* 섹션 레이블 — 월별 상세는 새 페이지 시작 */
+  .section-label { font-size: 12px !important; padding: 6px 10px !important; margin: 14px 0 8px !important; }
+  #monthDetailLabel { break-before: page; page-break-before: page; margin-top: 0 !important; }
+
+  /* 카드 내부 분리 방지 (row는 분리 허용 — 카드 단위로만 방지) */
+  .card    { break-inside: avoid; page-break-inside: avoid; padding: 11px 13px !important; }
+  .card h3 { font-size: 12.5px !important; }
+  .card .desc { font-size: 10.5px !important; margin-bottom: 7px !important; }
+  .kpi     { break-inside: avoid; page-break-inside: avoid; padding: 11px 13px !important; }
+  .kpi-grid { break-inside: avoid; page-break-inside: avoid; }
+  .row     { break-inside: auto !important; page-break-inside: auto !important; }
+
+  /* 차트 높이 — beforeprint JS가 canvas를 동일 크기로 리사이즈하므로 overflow 차단 필수 */
+  .chart-wrap       { height: 155px !important; overflow: hidden !important; }
+  .chart-wrap.tall  { height: 185px !important; overflow: hidden !important; }
+  .chart-wrap.short { height: 120px !important; overflow: hidden !important; }
+  /* canvas 크기가 컨테이너를 넘지 않도록 */
+  canvas { max-width: 100% !important; }
+
+  /* 테이블 */
+  table     { font-size: 10.5px !important; }
+  th, td    { padding: 5px 6px !important; }
+
+  /* KPI 값 크기 */
+  .kpi .val { font-size: 18px !important; }
+  .kpi .lbl { font-size: 11px !important; }
+  .delta    { font-size: 10.5px !important; }
+
+  /* 모달 내 차트는 숨김 (KPI 그리드의 산출 상세) */
+  .metric-card::after { display: none !important; }
+
+  /* note 박스 */
+  .note, .note-blue { font-size: 11px !important; padding: 7px 10px !important; }
+
+  /* compare-grid */
+  .compare-cell .now { font-size: 14px !important; }
+}
+
+/* Responsive */
+@media(max-width:980px){
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .row.cols-2,.row.cols-2b,.row.cols-2c{grid-template-columns:1fr}
+  .row.cols-3{grid-template-columns:1fr 1fr}
+  .compare-grid{grid-template-columns:repeat(2,1fr)}
+  .header{flex-direction:column;align-items:flex-start}
+}
+@media(max-width:600px){.row.cols-3{grid-template-columns:1fr}}
+
+/* ── 사용자 정보 / 로그아웃 ── */
+.user-info{display:flex;align-items:center;gap:8px;margin-left:4px}
+.role-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
+.role-badge.admin{background:#eff6ff;color:var(--primary);border:1px solid #bfdbfe}
+.role-badge.viewer{background:#f0fdf4;color:var(--good);border:1px solid #bbf7d0}
+.btn-logout{background:#fff;color:var(--muted);border:1px solid var(--line);padding:5px 12px;font-size:12px}
+.btn-logout:hover{background:#f1f5f9;color:var(--ink)}
+
+/* ── 비밀번호 변경 모달 ── */
+.pw-modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000;align-items:center;justify-content:center;padding:20px}
+.pw-modal-overlay.show{display:flex}
+.pw-modal{background:#fff;border-radius:16px;width:100%;max-width:460px;box-shadow:0 8px 40px rgba(15,23,42,.18);overflow:hidden}
+.pw-modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px 16px;border-bottom:1px solid var(--line)}
+.pw-modal-header h2{font-size:16px;font-weight:700;margin:0}
+.pw-modal-close{background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1;padding:0 4px}
+.pw-modal-close:hover{color:var(--ink)}
+.pw-modal-body{padding:20px 24px;max-height:72vh;overflow-y:auto}
+.pw-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.pw-section-title:first-child{margin-top:0}
+.pw-field{margin-bottom:12px}
+.pw-field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px}
+.pw-field input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+.pw-field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.pw-result{border-radius:8px;padding:10px 14px;font-size:13px;margin-top:4px;display:none}
+.pw-result.success{background:#f0fdf4;color:var(--good);border:1px solid #bbf7d0}
+.pw-result.error{background:#fef2f2;color:var(--bad);border:1px solid #fecaca}
+.pw-modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--line);background:#f8fafc}
+.pw-hint{font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:10px;line-height:1.5}
+</style>
+</head>
+<body>
+<div style="background:#fbbf24;color:#92400e;padding:10px 24px;font-size:13px;font-weight:700;text-align:center;position:sticky;top:0;z-index:9999;border-bottom:2px solid #f59e0b;letter-spacing:.2px">
+  ⚠ 미리보기 모드 — 인증 없이 접근 가능 &nbsp;·&nbsp; 로그인 설정 완료 후 삭제 예정
+</div>
+<div class="shell">
+
+<!-- ══ Header ══ -->
+<div class="header">
+  <div>
+    <div class="title">🍽️ 구내식당(채움) 운영 대시보드</div>
+    <div class="subtitle" id="headerSubtitle">로딩 중...</div>
+  </div>
+  <div class="header-actions">
+    <div class="period-tabs" id="monthTabs"></div>
+    <button class="btn btn-primary" id="uploadBtn" onclick="showUploadModal()">📤 데이터 업로드</button>
+    <button class="btn btn-outline" id="pdfBtn" onclick="downloadPDF()">📄 PDF 다운로드</button>
+    <div class="user-info">
+      <span class="role-badge" id="userRole"></span>
+      <button class="btn btn-ghost" id="pwChangeBtn" style="display:none;font-size:12px;padding:5px 12px" onclick="showPwChangeModal()">🔐 비밀번호 변경</button>
+      <button class="btn btn-logout" onclick="authLogout()">로그아웃</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 누적 추이 ══ -->
+<div class="section-label">📈 월별 공급가액 추이 <span style="font-size:12px;font-weight:400;color:var(--muted)">— 월 데이터 업로드 시 자동 갱신</span></div>
+<div class="row cols-1">
+  <div class="card">
+    <h3>월별 총 공급가액 추이</h3>
+    <div class="desc">공급가액(천원) 월별 변동</div>
+    <div class="chart-wrap short"><canvas id="trendSupplyChart"></canvas></div>
+  </div>
+</div>
+<!-- ══ 연누계 현황 ══ -->
+<div class="section-label">📊 연누계 현황 <span style="font-size:12px;font-weight:400;color:var(--muted)">— 당해 연도 월별 누적 합산 · 월 추가 시 자동 갱신</span></div>
+<div class="kpi-grid" id="ytdKpiGrid"></div>
+<div class="row cols-2c">
+  <div class="card">
+    <h3>연누계 원가 비중</h3>
+    <div class="desc" id="ytdDonutDesc"></div>
+    <div class="chart-wrap short"><canvas id="ytdCostDonut"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>연누계 원가 항목별 내역</h3>
+    <div class="desc" id="ytdBreakDesc"></div>
+    <table>
+      <thead><tr><th>항목</th><th>누계 금액</th><th>비중</th><th>월평균</th></tr></thead>
+      <tbody id="ytdBreakBody"></tbody>
+      <tfoot id="ytdBreakFoot"></tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- ══ 월별 상세 ══ -->
+<div class="section-label" id="monthDetailLabel">📋 상세</div>
+<div class="kpi-grid" id="kpiGrid"></div>
+
+<div class="row cols-1">
+  <div class="card">
+    <h3>원가 구성 분석 (공급가액 기준)</h3>
+    <div class="desc" id="costStackDesc"></div>
+    <div class="chart-wrap"><canvas id="costStackChart"></canvas></div>
+    <div class="compare-grid" id="costCompareGrid"></div>
+    <div id="costNote"></div>
+  </div>
+</div>
+
+<div class="row cols-2c">
+  <div class="card">
+    <h3>🥩 거래처별 식자재비 구성</h3>
+    <div class="desc" id="supplierDesc"></div>
+    <div class="chart-wrap"><canvas id="supplierChart"></canvas></div>
+    <table style="margin-top:10px">
+      <thead><tr><th>거래처</th><th>공급가액</th><th>비중</th></tr></thead>
+      <tbody id="supplierTableBody"></tbody>
+      <tfoot id="supplierTableFoot"></tfoot>
+    </table>
+  </div>
+  <div class="card">
+    <h3>🍜 라면 직접 식자재비</h3>
+    <div class="desc">경비처리 항목 중 라면코너 운영 직접 매입분</div>
+    <div id="ramenKpi" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px"></div>
+    <table>
+      <thead><tr><th>일자</th><th>품목</th><th>공급가액</th></tr></thead>
+      <tbody id="ramenTableBody"></tbody>
+      <tfoot id="ramenTableFoot"></tfoot>
+    </table>
+    <div class="note" style="margin-top:14px">⚠ 위 금액은 특수 라면·토핑·라면기계 부속에 한정. 일반 박스 라면은 메인 거래처에 포함.</div>
+  </div>
+</div>
+
+<div class="row cols-1">
+  <div class="card">
+    <h3>📊 식자재 항목별 1식당 단가 (추정)</h3>
+    <div class="desc">실제 식수와 직접 매입한 식자재비를 기반으로 산출</div>
+    <div class="chart-wrap"><canvas id="perMealCategoryChart"></canvas></div>
+    <table style="margin-top:14px">
+      <thead><tr><th>식사 종류</th><th>실제 식수</th><th>직접 식자재비</th><th>1식당 식자재비</th></tr></thead>
+      <tbody id="perMealTableBody"></tbody>
+      <tfoot id="perMealTableFoot"></tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="row cols-1">
+  <div class="card">
+    <h3>식자재비 법인별 1인 부담</h3>
+    <div class="desc">안분비율이 인원수에 비례 → 1인 식자재비 동일</div>
+    <table>
+      <thead><tr><th>법인명</th><th>인원</th><th>법인 식자재비</th><th>1인 식자재비</th></tr></thead>
+      <tbody id="foodPerPersonTableBody"></tbody>
+      <tfoot id="foodPerPersonTableFoot"></tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="row cols-2b">
+  <div class="card">
+    <h3>식사 종류별 식수 구성</h3>
+    <div class="desc" id="mealMixDesc"></div>
+    <div class="chart-wrap"><canvas id="mealMixChart"></canvas></div>
+    <table style="margin-top:10px">
+      <thead><tr><th>구분</th><th>준비</th><th>실제</th><th>실식수율</th></tr></thead>
+      <tbody id="mealBreakdownTableBody"></tbody>
+      <tfoot id="mealBreakdownTableFoot"></tfoot>
+    </table>
+  </div>
+  <div class="card">
+    <h3>일일 식수 추이</h3>
+    <div class="desc" id="dailyChartDesc"></div>
+    <div class="chart-wrap tall"><canvas id="dailyChart"></canvas></div>
+  </div>
+</div>
+
+<div class="row cols-2b">
+  <div class="card">
+    <h3>법인별 안분 비율</h3>
+    <div class="desc" id="companyPieDesc"></div>
+    <div class="chart-wrap tall"><canvas id="companyPie"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>법인별 정산 내역</h3>
+    <div class="desc">청구분(VAT 포함) 기준 · 단위: 원</div>
+    <div style="overflow-x:auto;max-height:380px;overflow-y:auto">
+      <table>
+        <thead><tr><th>법인명</th><th>인원</th><th>안분비율</th><th>공급가액</th><th>VAT</th><th>청구금액</th></tr></thead>
+        <tbody id="companyTableBody"></tbody>
+        <tfoot id="companyTableFoot"></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;color:var(--muted);font-size:11.5px;margin-top:30px;padding-top:20px;border-top:1px solid var(--line)">
+  📤 상단 <strong>데이터 업로드</strong> 버튼으로 정산 엑셀 파일을 업로드하여 새 월 데이터를 추가할 수 있습니다
+</div>
+</div>
+
+<!-- ══ 데이터 업로드 모달 ══ -->
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header">
+      <div><h2>📤 월 데이터 업로드</h2><div class="sub">정산 엑셀(.xlsx) 파일을 업로드하여 새 월 데이터를 추가 · 기존 월은 덮어쓰기 가능</div></div>
+      <button class="modal-close" onclick="closeUploadModal()">×</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- 드래그앤드롭 존 -->
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📊</div>
+        <div class="main-text">엑셀 파일(.xlsx)을 여기에 드래그하거나 클릭하여 선택</div>
+        <div class="sub-text">HT_구내식당(채움)_YY년M월정산_vX.X.xlsx 형식 파일</div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.json" style="display:none" onchange="handleFileSelect(event)">
+      <div class="upload-result" id="uploadResult"></div>
+
+      <!-- 액션 버튼 -->
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button class="btn btn-ghost" onclick="document.getElementById('fileInput').click()" style="flex:1">📂 파일 선택</button>
+      </div>
+
+      <!-- 등록된 월 목록 -->
+      <div style="margin-top:22px;border-top:1px solid var(--line);padding-top:16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--muted)">현재 등록된 월 데이터</div>
+        <div id="monthListContainer"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══ KPI 상세 모달 ══ -->
+<div class="modal-overlay" id="kpiModal">
+  <div class="modal" id="kpiModalContent"></div>
+</div>
+
+<!-- ══ 비밀번호 변경 모달 ══ -->
+<div class="pw-modal-overlay" id="pwModal">
+  <div class="pw-modal">
+    <div class="pw-modal-header">
+      <h2>🔐 비밀번호 변경</h2>
+      <button class="pw-modal-close" onclick="closePwChangeModal()">×</button>
+    </div>
+    <div class="pw-modal-body">
+
+      <div class="pw-section-title">본인 확인</div>
+      <div class="pw-field">
+        <label>현재 관리자 비밀번호</label>
+        <input type="password" id="pwCurrent" placeholder="현재 비밀번호 입력" autocomplete="current-password">
+      </div>
+
+      <div class="pw-section-title">관리자 비밀번호</div>
+      <div class="pw-hint">변경하지 않으려면 비워두세요.</div>
+      <div class="pw-field">
+        <label>새 비밀번호</label>
+        <input type="password" id="pwAdminNew" placeholder="새 관리자 비밀번호 (8자 이상)" autocomplete="new-password">
+      </div>
+      <div class="pw-field">
+        <label>새 비밀번호 확인</label>
+        <input type="password" id="pwAdminConfirm" placeholder="새 비밀번호 재입력" autocomplete="new-password">
+      </div>
+
+      <div class="pw-section-title">열람 비밀번호</div>
+      <div class="pw-hint">변경하지 않으려면 비워두세요.</div>
+      <div class="pw-field">
+        <label>새 열람 비밀번호</label>
+        <input type="password" id="pwViewerNew" placeholder="새 열람 비밀번호 (8자 이상)" autocomplete="new-password">
+      </div>
+      <div class="pw-field">
+        <label>새 열람 비밀번호 확인</label>
+        <input type="password" id="pwViewerConfirm" placeholder="새 열람 비밀번호 재입력" autocomplete="new-password">
+      </div>
+
+      <div class="pw-result" id="pwResult"></div>
+    </div>
+    <div class="pw-modal-footer">
+      <button class="btn btn-ghost" onclick="closePwChangeModal()">취소</button>
+      <button class="btn btn-primary" id="pwSaveBtn" onclick="submitPwChange()">변경 저장</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+/* ══════════════════════════════════════════════════
+   데이터 레이어 — data.js 기본값 + localStorage 업로드 병합
+══════════════════════════════════════════════════ */
+let DISPLAY_DATA = { months: [], records: {} };
+let currentMonth = null;
+
+const STORAGE_KEY = 'chaeum_uploads_v1';
+
+function buildDisplayData() {
+  let uploaded = {};
+  try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+  const allRecords = { ...CHAEUM_DATA.records, ...uploaded };
+  const allMonths  = [...new Set([...CHAEUM_DATA.months, ...Object.keys(uploaded)])]
+    .sort((a, b) => a.localeCompare(b));
+
+  DISPLAY_DATA = { months: allMonths, records: allRecords };
+}
+
+function saveUpload(monthKey, record) {
+  let uploaded = {};
+  try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+  uploaded[monthKey] = record;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(uploaded));
+  } catch(e) {
+    throw new Error('브라우저 저장소 접근이 차단되었습니다. Edge/Safari의 추적 방지 설정을 확인하거나 파일을 서버를 통해 열어주세요.');
+  }
+}
+
+function deleteUpload(monthKey) {
+  let uploaded = {};
+  try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+  delete uploaded[monthKey];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(uploaded));
+}
+
+function isBaseData(monthKey) {
+  return CHAEUM_DATA.months.includes(monthKey);
+}
+
+/* ══════════════════════════════════════════════════
+   유틸
+══════════════════════════════════════════════════ */
+const charts = {};
+const fmt    = n => (n != null && !isNaN(n)) ? Number(n).toLocaleString('ko-KR') : '-';
+const fmt천   = n => (n != null && !isNaN(n)) ? Math.round(n / 1000).toLocaleString('ko-KR') : '-';
+const rec    = key => DISPLAY_DATA.records[key];
+const prevKey = key => { const i = DISPLAY_DATA.months.indexOf(key); return i > 0 ? DISPLAY_DATA.months[i - 1] : null; };
+const prevRec = key => { const pk = prevKey(key); return pk ? rec(pk) : null; };
+
+function deltaHtml(val, prevVal) {
+  if (prevVal == null) return '<span class="delta flat">— 전월 없음</span>';
+  const diff = val - prevVal;
+  const pct  = ((diff / prevVal) * 100).toFixed(1);
+  const cls  = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+  const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '—';
+  return `<span class="delta ${cls}">${arrow} ${fmt(Math.abs(diff))} (${diff >= 0 ? '+' : ''}${pct}%)</span>`;
+}
+
+function setChart(id, config) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  const el = document.getElementById(id);
+  if (!el) return;
+  charts[id] = new Chart(el, config);
+}
+
+const BASE_OPTS = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 10, padding: 10 } } }
+};
+const PALETTE = ['#2563eb','#7c3aed','#16a34a','#d97706','#0891b2','#db2777','#65a30d','#9333ea','#0d9488','#ea580c','#475569'];
+const SUP_COLORS = ['#2563eb','#7c3aed','#0891b2','#d97706','#16a34a','#fca5a5'];
+
+/* ══════════════════════════════════════════════════
+   초기화
+══════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', async () => {
+  // ── 세션 확인 및 역할 기반 UI ──
+  const session = await authGetSession();
+  if (!session) return; // 이미 head에서 리다이렉트됨
+
+  const roleEl = document.getElementById('userRole');
+  if (session.role === 'admin') {
+    roleEl.textContent = '관리자';
+    roleEl.className = 'role-badge admin';
+    document.getElementById('pwChangeBtn').style.display = '';
+  } else {
+    roleEl.textContent = '열람';
+    roleEl.className = 'role-badge viewer';
+    const uploadBtn = document.getElementById('uploadBtn');
+    if (uploadBtn) uploadBtn.style.display = 'none';
+  }
+
+  // ── 대시보드 초기화 ──
+  buildDisplayData();
+  currentMonth = DISPLAY_DATA.months[DISPLAY_DATA.months.length - 1];
+  renderTabs();
+  renderCumulative();
+  renderMonthly(currentMonth);
+  setupDropZone();
+});
+
+/* ══════════════════════════════════════════════════
+   월 탭
+══════════════════════════════════════════════════ */
+function renderTabs() {
+  const container = document.getElementById('monthTabs');
+  container.innerHTML = '';
+  DISPLAY_DATA.months.forEach(key => {
+    const btn = document.createElement('div');
+    btn.className = 'tab' + (key === currentMonth ? ' active' : '');
+    btn.dataset.month = key;
+    btn.textContent = rec(key).label;
+    btn.onclick = () => switchMonth(key);
+    container.appendChild(btn);
+  });
+}
+
+function switchMonth(key) {
+  if (key === currentMonth) return;
+  currentMonth = key;
+  document.querySelectorAll('#monthTabs .tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.month === key));
+  renderMonthly(key);
+  window.scrollTo({ top: document.getElementById('monthDetailLabel').offsetTop - 20, behavior: 'smooth' });
+}
+
+/* ══════════════════════════════════════════════════
+   누적 추이 차트
+══════════════════════════════════════════════════ */
+function renderCumulative() {
+  const keys   = DISPLAY_DATA.months;
+  const labels = keys.map(k => rec(k).label.replace('2026년 ','').replace('년 ','/'));
+
+  const supply = keys.map(k => Math.round(rec(k).cost.total / 1000));
+
+  setChart('trendSupplyChart', {
+    type:'bar', data:{ labels, datasets:[{ label:'공급가액(천원)', data:supply, backgroundColor:'#2563eb', borderRadius:6 }] },
+    options:{ ...BASE_OPTS, scales:{ y:{ ticks:{ callback:v=>fmt(v)+'천' } } },
+      plugins:{ ...BASE_OPTS.plugins, legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)+'천원'}} } }
+  });
+
+  renderYTD();
+}
+
+/* ══════════════════════════════════════════════════
+   연누계 현황
+══════════════════════════════════════════════════ */
+function renderYTD() {
+  const allKeys = DISPLAY_DATA.months;
+  if (allKeys.length === 0) return;
+
+  // 가장 최근 데이터 기준 연도로 필터
+  const latestYear = allKeys[allKeys.length - 1].split('-')[0];
+  const ytdKeys    = allKeys.filter(k => k.startsWith(latestYear));
+  const n          = ytdKeys.length;
+  if (n === 0) return;
+
+  // 연누계 집계
+  const ytdSupply  = ytdKeys.reduce((s, k) => s + rec(k).cost.total,  0);
+  const ytdMeals   = ytdKeys.reduce((s, k) => s + rec(k).meals.actual, 0);
+  const ytdFood    = ytdKeys.reduce((s, k) => s + rec(k).cost.food,     0);
+  const ytdLabor   = ytdKeys.reduce((s, k) => s + rec(k).cost.labor,    0);
+  const ytdOpex    = ytdKeys.reduce((s, k) => s + rec(k).cost.opex,     0);
+  const ytdMgmt    = ytdKeys.reduce((s, k) => s + rec(k).cost.mgmt,     0);
+  const ytdPerMeal = ytdMeals > 0 ? Math.round(ytdSupply / ytdMeals) : 0;
+
+  // KPI 카드
+  document.getElementById('ytdKpiGrid').innerHTML = `
+    <div class="kpi" style="border-top:3px solid var(--primary)">
+      <div class="lbl">${latestYear}년 누계 공급가액</div>
+      <div class="val">${fmt천(ytdSupply)}<span class="unit">천원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${n}개월 누계 · 월평균 ${fmt천(Math.round(ytdSupply/n))}천원</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #16a34a">
+      <div class="lbl">${latestYear}년 누계 식수</div>
+      <div class="val">${fmt(ytdMeals)}<span class="unit">식</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">월평균 ${fmt(Math.round(ytdMeals/n))}식</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #d97706">
+      <div class="lbl">누계 평균 1식당 단가</div>
+      <div class="val">${fmt(ytdPerMeal)}<span class="unit">원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">누계 공급가 ÷ 누계 식수</div>
+    </div>`;
+
+  // 연누계 원가 비중 (도넛)
+  const p = v => (v/ytdSupply*100).toFixed(1);
+  document.getElementById('ytdDonutDesc').textContent =
+    `${latestYear}년 ${n}개월 누계 · 공급가액 ${fmt천(ytdSupply)}천원`;
+  setChart('ytdCostDonut', {
+    type:'doughnut',
+    data:{
+      labels:[`식재료비 ${p(ytdFood)}%`,`인건비 ${p(ytdLabor)}%`,`경비 ${p(ytdOpex)}%`,`운영관리비 ${p(ytdMgmt)}%`],
+      datasets:[{ data:[ytdFood,ytdLabor,ytdOpex,ytdMgmt],
+        backgroundColor:['#2563eb','#7c3aed','#d97706','#16a34a'] }]
+    },
+    options:{ ...BASE_OPTS, cutout:'62%',
+      plugins:{ ...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.label.split(' ')[0]+': '+fmt천(c.raw)+'천원'}} } }
+  });
+
+  // 연누계 원가 항목별 테이블
+  const ytdItems = [
+    {label:'식재료비',   val:ytdFood,  color:'#2563eb'},
+    {label:'인건비',     val:ytdLabor, color:'#7c3aed'},
+    {label:'경비',       val:ytdOpex,  color:'#d97706'},
+    {label:'운영관리비', val:ytdMgmt,  color:'#16a34a'},
+  ];
+  document.getElementById('ytdBreakDesc').textContent = `${latestYear}년 ${n}개월 누계 원가 항목 내역`;
+  document.getElementById('ytdBreakBody').innerHTML = ytdItems.map(it =>
+    `<tr>
+      <td><span style="display:inline-block;width:8px;height:8px;background:${it.color};border-radius:2px;margin-right:6px"></span>${it.label}</td>
+      <td>${fmt(it.val)}</td>
+      <td>${p(it.val)}%</td>
+      <td>${fmt천(Math.round(it.val/n))}천</td>
+    </tr>`).join('');
+  document.getElementById('ytdBreakFoot').innerHTML =
+    `<tr><td>합계 (공급가)</td><td>${fmt(ytdSupply)}</td><td>100%</td><td>${fmt천(Math.round(ytdSupply/n))}천</td></tr>`;
+}
+
+/* ══════════════════════════════════════════════════
+   월별 상세 렌더 (탭 전환 시마다)
+══════════════════════════════════════════════════ */
+function renderMonthly(key) {
+  const r = rec(key), pr = prevRec(key);
+  document.getElementById('monthDetailLabel').textContent = `📋 ${r.label} 상세`;
+  document.getElementById('headerSubtitle').textContent =
+    `${r.label} 정산 기준 · ${r.companies.length}개 법인 · 영업일 ${r.businessDays}일 · 식수 적용 인원 ${fmt(r.headcount)}명`;
+
+  renderKPIs(r, pr);
+  renderCostStack(r, pr);
+  renderSuppliers(r);
+  renderRamen(r);
+  renderPerMealCategory(r);
+  renderPerPersonFood(r);
+  renderMealMix(r);
+  renderDaily(r);
+  renderCompanies(r);
+}
+
+function renderKPIs(r, pr) {
+  const perMeal = Math.round(r.cost.total / r.meals.actual);
+  const ppFood  = Math.round(r.cost.food  / r.headcount);
+  const ppDay   = Math.round(ppFood / r.businessDays);
+  const pmFood  = Math.round(r.cost.food  / r.meals.actual);
+  const avgMeals = (r.meals.actual / r.headcount).toFixed(1);
+
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi">
+      <div class="lbl">총 공급가액</div>
+      <div class="val">${fmt천(r.cost.total)}<span class="unit">천원</span></div>
+      ${deltaHtml(r.cost.total, pr?.cost.total)}
+    </div>
+    <div class="kpi">
+      <div class="lbl">실제 식수 (총)</div>
+      <div class="val">${fmt(r.meals.actual)}<span class="unit">식</span></div>
+      ${pr ? deltaHtml(r.meals.actual, pr.meals.actual)
+           : `<span class="delta flat">준비 대비 ${(r.meals.actual/r.meals.prepared*100).toFixed(1)}%</span>`}
+    </div>
+    <div class="kpi">
+      <div class="lbl">1식당 평균 단가</div>
+      <div class="val">${fmt(perMeal)}<span class="unit">원</span></div>
+      ${deltaHtml(perMeal, pr ? Math.round(pr.cost.total/pr.meals.actual) : null)}
+    </div>
+    <div class="kpi" style="grid-column:1/-1;background:linear-gradient(135deg,#eff6ff 0%,#fef3c7 100%);border:1px solid #bfdbfe;padding:14px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:13px;color:#1e40af;font-weight:600">🥗 식자재비 핵심 단가 지표</div>
+        <div style="font-size:11px;color:#1e40af;background:#fff;padding:3px 10px;border-radius:12px;border:1px solid #bfdbfe">💡 카드 클릭 시 산출 상세</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:14px">
+        <div class="metric-card" data-modal="m1">
+          <div class="lbl" style="color:#1e40af">1인 월 식자재비</div>
+          <div class="val" style="font-size:28px;color:#1e40af">${fmt(ppFood)}<span class="unit">원/인</span></div>
+          <div style="font-size:11.5px;color:#1e40af;margin-top:4px">${fmt천(r.cost.food)}천 ÷ ${fmt(r.headcount)}명</div>
+        </div>
+        <div class="metric-card" data-modal="m2" style="border-left:1px solid #bfdbfe">
+          <div class="lbl">1인 일 식자재비</div>
+          <div class="val" style="font-size:22px">${fmt(ppDay)}<span class="unit">원/인일</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">영업일 ${r.businessDays}일 기준</div>
+        </div>
+        <div class="metric-card" data-modal="m3" style="border-left:1px solid #bfdbfe">
+          <div class="lbl">1식당 식자재비</div>
+          <div class="val" style="font-size:22px">${fmt(pmFood)}<span class="unit">원/식</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">실제 식수 ${fmt(r.meals.actual)}식 기준</div>
+        </div>
+        <div class="metric-card" data-modal="m4" style="border-left:1px solid #bfdbfe">
+          <div class="lbl">1인 평균 식수</div>
+          <div class="val" style="font-size:22px">${avgMeals}<span class="unit">식/인</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">월 평균 이용 횟수</div>
+        </div>
+      </div>
+    </div>`;
+
+  document.querySelectorAll('#kpiGrid .metric-card').forEach(card =>
+    card.addEventListener('click', () => openKpiModal(card.dataset.modal, r)));
+}
+
+function renderCostStack(r, pr) {
+  const pl = pr ? pr.label.replace('2026년 ','') : null;
+  const cl = r.label.replace('2026년 ','');
+  const labels = pr ? [pl, cl] : [cl];
+  const mk = f => pr ? [Math.round(pr.cost[f]/1000), Math.round(r.cost[f]/1000)] : [Math.round(r.cost[f]/1000)];
+
+  document.getElementById('costStackDesc').textContent = pr ? `${pl} 대비 원가 구성 변화` : `${cl} 원가 구성`;
+
+  setChart('costStackChart', {
+    type:'bar', data:{ labels, datasets:[
+      {label:'식재료비',   data:mk('food'),  backgroundColor:'#2563eb', stack:'s'},
+      {label:'인건비',     data:mk('labor'), backgroundColor:'#7c3aed', stack:'s'},
+      {label:'경비',       data:mk('opex'),  backgroundColor:'#d97706', stack:'s'},
+      {label:'운영관리비', data:mk('mgmt'),  backgroundColor:'#16a34a', stack:'s'}
+    ]},
+    options:{...BASE_OPTS, scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>fmt(v)+'천'}}},
+      plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)+'천원'}}}}
+  });
+
+  const fields = [{key:'food',label:'식재료비'},{key:'labor',label:'인건비'},{key:'opex',label:'경비'},{key:'mgmt',label:'운영관리비'}];
+  document.getElementById('costCompareGrid').innerHTML = fields.map(f => {
+    const val = Math.round(r.cost[f.key]/1000);
+    const pv  = pr ? Math.round(pr.cost[f.key]/1000) : null;
+    const chg = pv ? ((r.cost[f.key]-pr.cost[f.key])/pr.cost[f.key]*100) : null;
+    const pill = chg==null?'flat':chg>0?'up':'down';
+    return `<div class="compare-cell">
+      <div class="name">${f.label}</div>
+      <div class="now">${fmt(val)} <span style="font-size:11px;color:var(--muted)">천원</span></div>
+      <div class="vs"><span class="pill ${pill}">${chg==null?'전월 없음':(chg>=0?'+':'')+chg.toFixed(1)+'%'}</span>${pv?` vs ${pl} ${fmt(pv)}`:''}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('costNote').innerHTML = r.note ? `<div class="note">⚠ ${r.note}</div>` : '';
+}
+
+function renderCostDonut(r) {
+  document.getElementById('costDonutDesc').textContent = `${r.label} 공급가 ${fmt천(r.cost.total)}천원 구성`;
+  const p = f => (r.cost[f]/r.cost.total*100).toFixed(1);
+  setChart('costDonutChart', {
+    type:'doughnut',
+    data:{labels:[`식재료비 ${p('food')}%`,`인건비 ${p('labor')}%`,`경비 ${p('opex')}%`,`운영관리비 ${p('mgmt')}%`],
+      datasets:[{data:[r.cost.food,r.cost.labor,r.cost.opex,r.cost.mgmt],
+        backgroundColor:['#2563eb','#7c3aed','#d97706','#16a34a']}]},
+    options:{...BASE_OPTS, cutout:'62%',
+      plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.label.split(' ')[0]+': '+fmt(c.raw)+'원'}}}}
+  });
+}
+
+function renderSuppliers(r) {
+  document.getElementById('supplierDesc').textContent = `${r.label} 식자재비 ${fmt천(r.cost.food)}천원 — 거래처별 매입 분포`;
+  setChart('supplierChart', {
+    type:'doughnut',
+    data:{labels:r.suppliers.map(s=>`${s.name} ${(s.ratio*100).toFixed(1)}%`),
+      datasets:[{data:r.suppliers.map(s=>Math.abs(s.amount)),
+        backgroundColor:r.suppliers.map((s,i)=>s.amount<0?'#fca5a5':(SUP_COLORS[i]||'#94a3b8'))}]},
+    options:{...BASE_OPTS, cutout:'58%',
+      plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>{const s=r.suppliers[c.dataIndex];return s.name+': '+(s.amount<0?'-':'')+fmt(Math.abs(s.amount))+'원';}}}}}
+  });
+  document.getElementById('supplierTableBody').innerHTML = r.suppliers.map((s,i)=>{
+    const c=s.amount<0?'#dc2626':(SUP_COLORS[i]||'#94a3b8');
+    return `<tr ${s.amount<0?'style="color:#dc2626"':''}>
+      <td><span style="display:inline-block;width:8px;height:8px;background:${c};border-radius:2px;margin-right:6px"></span>${s.name}</td>
+      <td>${s.amount<0?'('+fmt(Math.abs(s.amount))+')':fmt(s.amount)}</td><td>${(s.ratio*100).toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('supplierTableFoot').innerHTML = `<tr><td>합계</td><td>${fmt(r.cost.food)}</td><td>100.0%</td></tr>`;
+}
+
+function renderRamen(r) {
+  const rm=r.ramen, pm=rm.mealCount?Math.round(rm.totalCost/rm.mealCount):0, ratio=(rm.totalCost/r.cost.food*100).toFixed(2);
+  document.getElementById('ramenKpi').innerHTML = `
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px">
+      <div style="font-size:11px;color:#9a3412;font-weight:600">라면 직접 식자재비</div>
+      <div style="font-size:24px;font-weight:700;color:#9a3412;margin-top:4px">${fmt(rm.totalCost)}<span style="font-size:12px;font-weight:500">원</span></div>
+      <div style="font-size:11px;color:#9a3412;margin-top:2px">전체 식자재비의 ${ratio}%</div>
+    </div>
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
+      <div style="font-size:11px;color:#1e40af;font-weight:600">라면 1식당 직접 식자재비</div>
+      <div style="font-size:24px;font-weight:700;color:#1e40af;margin-top:4px">${fmt(pm)}<span style="font-size:12px;font-weight:500">원/식</span></div>
+      <div style="font-size:11px;color:#1e40af;margin-top:2px">라면 식수 ${fmt(rm.mealCount)}식 기준</div>
+    </div>`;
+  document.getElementById('ramenTableBody').innerHTML = rm.items.map(it=>
+    `<tr><td>${it.date}</td><td style="text-align:left">${it.item}</td><td>${fmt(it.amount)}</td></tr>`).join('');
+  document.getElementById('ramenTableFoot').innerHTML = `<tr><td colspan="2">소계</td><td>${fmt(rm.totalCost)}</td></tr>`;
+}
+
+function renderPerMealCategory(r) {
+  const cats=r.perMealCategory, tm=cats.reduce((s,c)=>s+c.mealCount,0), tc=cats.reduce((s,c)=>s+c.foodCost,0);
+  setChart('perMealCategoryChart', {
+    type:'bar',
+    data:{labels:[...cats.map(c=>c.label),'전체 평균'],
+      datasets:[{label:'1식당 식자재비(원)',data:[...cats.map(c=>c.perMeal),Math.round(tc/tm)],
+        backgroundColor:['#2563eb','#16a34a','#d97706','#94a3b8'],borderRadius:6}]},
+    options:{...BASE_OPTS, indexAxis:'y', scales:{x:{ticks:{callback:v=>fmt(v)+'원'}}},
+      plugins:{...BASE_OPTS.plugins, legend:{display:false}, tooltip:{callbacks:{label:c=>'1식당: '+fmt(c.raw)+'원'}}}}
+  });
+  document.getElementById('perMealTableBody').innerHTML = cats.map(c=>
+    `<tr><td>${c.label}</td><td>${fmt(c.mealCount)}</td><td>${fmt(c.foodCost)}</td><td><strong>${fmt(c.perMeal)}</strong></td></tr>`).join('');
+  document.getElementById('perMealTableFoot').innerHTML =
+    `<tr><td>합계</td><td>${fmt(tm)}</td><td>${fmt(tc)}</td><td><strong>${fmt(Math.round(tc/tm))} (평균)</strong></td></tr>`;
+}
+
+function renderPerPersonFood(r) {
+  document.getElementById('foodPerPersonTableBody').innerHTML = r.companies.map((c,i)=>{
+    const cf=Math.round(c.ratio*r.cost.food);
+    return `<tr>
+      <td><span style="display:inline-block;width:8px;height:8px;background:${PALETTE[i]};border-radius:2px;margin-right:6px"></span>${c.name}</td>
+      <td>${fmt(c.headcount)}</td><td>${fmt(cf)}</td><td><strong>${fmt(Math.round(cf/c.headcount))}</strong></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('foodPerPersonTableFoot').innerHTML =
+    `<tr><td>합계</td><td>${fmt(r.headcount)}</td><td>${fmt(r.cost.food)}</td><td>${fmt(Math.round(r.cost.food/r.headcount))}</td></tr>`;
+}
+
+function renderMealMix(r) {
+  document.getElementById('mealMixDesc').textContent = `총 ${fmt(r.meals.actual)}식 구성 — ${r.label}`;
+  setChart('mealMixChart', {
+    type:'doughnut',
+    data:{labels:r.mealMix.labels, datasets:[{data:r.mealMix.values,
+      backgroundColor:['#2563eb','#7c3aed','#0891b2','#d97706','#16a34a','#db2777','#475569']}]},
+    options:{...BASE_OPTS, cutout:'55%',
+      plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.raw)+'식'}}}}
+  });
+  const tp=r.mealBreakdown.reduce((s,m)=>s+m.prepared,0), ta=r.mealBreakdown.reduce((s,m)=>s+m.actual,0);
+  document.getElementById('mealBreakdownTableBody').innerHTML = r.mealBreakdown.map(m=>
+    `<tr><td>${m.label}</td><td>${fmt(m.prepared)}</td><td>${fmt(m.actual)}</td><td>${m.prepared>0&&m.actual!==m.prepared?(m.actual/m.prepared*100).toFixed(1)+'%':'—'}</td></tr>`).join('');
+  document.getElementById('mealBreakdownTableFoot').innerHTML =
+    `<tr><td>합계</td><td>${fmt(tp)}</td><td>${fmt(ta)}</td><td>${(ta/tp*100).toFixed(1)}%</td></tr>`;
+}
+
+function renderDaily(r) {
+  document.getElementById('dailyChartDesc').textContent = `준비 vs 실제 식수 — ${r.label} 영업일 ${r.businessDays}일`;
+  setChart('dailyChart', {
+    type:'line',
+    data:{labels:r.daily.map(d=>d[0]), datasets:[
+      {label:'준비 식수',data:r.daily.map(d=>d[1]),borderColor:'#94a3b8',backgroundColor:'rgba(148,163,184,.1)',
+        borderDash:[5,3],fill:false,tension:.3,pointRadius:3},
+      {label:'실제 식수',data:r.daily.map(d=>d[2]),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.15)',
+        fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#2563eb',borderWidth:2.5}
+    ]},
+    options:{...BASE_OPTS, scales:{y:{beginAtZero:false,ticks:{callback:v=>fmt(v)+'식'}}},
+      plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)+'식'}}}}
+  });
+}
+
+function renderCompanies(r) {
+  document.getElementById('companyPieDesc').textContent = `${r.companies.length}개 법인, 합계 ${fmt(r.headcount)}명`;
+  setChart('companyPie', {
+    type:'pie',
+    data:{labels:r.companies.map(c=>c.name), datasets:[{data:r.companies.map(c=>c.headcount), backgroundColor:PALETTE}]},
+    options:{...BASE_OPTS, plugins:{...BASE_OPTS.plugins,
+      legend:{position:'right',labels:{font:{size:11},boxWidth:10,padding:6}},
+      tooltip:{callbacks:{label:c=>c.label+': '+c.raw+'명 ('+(c.raw/r.headcount*100).toFixed(2)+'%)'}}}}
+  });
+  document.getElementById('companyTableBody').innerHTML = r.companies.map((c,i)=>
+    `<tr>
+      <td><span style="display:inline-block;width:8px;height:8px;background:${PALETTE[i]};border-radius:2px;margin-right:6px"></span>${c.name}</td>
+      <td>${fmt(c.headcount)}</td><td>${(c.ratio*100).toFixed(2)}%</td>
+      <td>${fmt(c.supply)}</td><td>${fmt(c.vat)}</td><td><strong>${fmt(c.total)}</strong></td>
+    </tr>`).join('');
+  const T = f => r.companies.reduce((s,c)=>s+c[f],0);
+  document.getElementById('companyTableFoot').innerHTML =
+    `<tr><td>합계</td><td>${fmt(r.headcount)}</td><td>100.0%</td><td>${fmt(T('supply'))}</td><td>${fmt(T('vat'))}</td><td>${fmt(T('total'))}</td></tr>`;
+}
+
+/* ══════════════════════════════════════════════════
+   KPI 상세 모달
+══════════════════════════════════════════════════ */
+function openKpiModal(key, r) {
+  const ppFood=Math.round(r.cost.food/r.headcount), ppDay=Math.round(ppFood/r.businessDays);
+  const pmFood=Math.round(r.cost.food/r.meals.actual), avgMeals=(r.meals.actual/r.headcount).toFixed(2);
+
+  const defs = {
+    m1:{title:'1인 월 식자재비 산출',sub:'식자재비 ÷ 정산 인원',
+      formula:`${fmt(r.cost.food)}원 ÷ ${fmt(r.headcount)}명`, result:`= ${fmt(ppFood)}원/인`,
+      body:`<div class="modal-section"><h4>식자재비 구성</h4><table>
+        <thead><tr><th>거래처</th><th>금액</th><th>비중</th></tr></thead>
+        <tbody>${r.suppliers.map(s=>`<tr ${s.amount<0?'style="color:#dc2626"':''}><td>${s.name}</td><td>${s.amount<0?'('+fmt(Math.abs(s.amount))+')':fmt(s.amount)}</td><td>${(s.ratio*100).toFixed(1)}%</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>합계</td><td>${fmt(r.cost.food)}</td><td>100%</td></tr></tfoot>
+      </table></div>
+      <div class="modal-section"><h4>정산 인원</h4>
+        <div style="background:#f8fafc;border-radius:8px;padding:12px;font-size:13px;line-height:1.8">
+          재직 <strong>${fmt(r.headcountDetail.onsite)}명</strong> — 휴직 ${r.headcountDetail.leave}명, 외부근무 ${r.headcountDetail.offsite}명 제외<br>
+          정산 적용: <strong style="color:#1e40af">${fmt(r.headcountDetail.applied)}명</strong>
+        </div></div>`},
+    m2:{title:'1인 일 식자재비 산출',sub:'1인 월 식자재비 ÷ 영업일수',
+      formula:`${fmt(ppFood)}원/인 ÷ ${r.businessDays}일`, result:`= ${fmt(ppDay)}원/인일`,
+      body:`<div class="modal-section"><h4>산출 내역</h4>
+        <div style="background:#f8fafc;border-radius:8px;padding:14px;font-size:13px;line-height:1.9">
+          1인 월 식자재비: <strong>${fmt(ppFood)}원</strong><br>영업일수: <strong>${r.businessDays}일</strong><br>
+          1인 일 식자재비: <strong style="color:#1e40af">${fmt(ppDay)}원/인일</strong><br>
+          1일 평균 총 식자재비: ${fmt(Math.round(r.cost.food/r.businessDays))}원/일
+        </div></div>`},
+    m3:{title:'1식당 식자재비 산출',sub:'식자재비 ÷ 실제 식수',
+      formula:`${fmt(r.cost.food)}원 ÷ ${fmt(r.meals.actual)}식`, result:`= ${fmt(pmFood)}원/식`,
+      body:`<div class="modal-section"><h4>식사 종류별</h4><table>
+        <thead><tr><th>구분</th><th>식수</th><th>식자재비</th><th>1식당</th></tr></thead>
+        <tbody>${r.perMealCategory.map(c=>`<tr><td>${c.label}</td><td>${fmt(c.mealCount)}</td><td>${fmt(c.foodCost)}</td><td><strong>${fmt(c.perMeal)}원</strong></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>합계</td><td>${fmt(r.meals.actual)}</td><td>${fmt(r.cost.food)}</td><td><strong>${fmt(pmFood)}원</strong></td></tr></tfoot>
+      </table></div>`},
+    m4:{title:'1인 평균 식수 산출',sub:'실제 식수 ÷ 정산 인원',
+      formula:`${fmt(r.meals.actual)}식 ÷ ${fmt(r.headcount)}명`, result:`= ${avgMeals}식/인 (월)`,
+      body:`<div class="modal-section"><h4>식수 구성</h4><table>
+        <thead><tr><th>구분</th><th>준비</th><th>실제</th><th>실식수율</th></tr></thead>
+        <tbody>${r.mealBreakdown.map(m=>`<tr><td>${m.label}</td><td>${fmt(m.prepared)}</td><td>${fmt(m.actual)}</td><td>${m.prepared>0&&m.actual!==m.prepared?(m.actual/m.prepared*100).toFixed(1)+'%':'—'}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>합계</td><td>${fmt(r.meals.prepared)}</td><td>${fmt(r.meals.actual)}</td><td>${(r.meals.actual/r.meals.prepared*100).toFixed(1)}%</td></tr></tfoot>
+      </table>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+        <div style="background:#eff6ff;border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:#1e40af;font-weight:600">월 평균 1인 식수</div>
+          <div style="font-size:20px;font-weight:700;color:#1e40af">${avgMeals}식/인</div>
+        </div>
+        <div style="background:#fef3c7;border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:#92400e;font-weight:600">일 평균 총 식수</div>
+          <div style="font-size:20px;font-weight:700;color:#92400e">${fmt(Math.round(r.meals.actual/r.businessDays))}식/일</div>
+        </div>
+      </div></div>`}
+  };
+
+  const def = defs[key]; if (!def) return;
+  document.getElementById('kpiModalContent').innerHTML = `
+    <div class="modal-header">
+      <div><h2>${def.title}</h2><div class="sub">${def.sub}</div></div>
+      <button class="modal-close" onclick="document.getElementById('kpiModal').classList.remove('show')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="formula-box"><div class="formula">${def.formula}</div><div class="result">${def.result}</div></div>
+      ${def.body}
+    </div>`;
+  document.getElementById('kpiModal').classList.add('show');
+}
+
+/* ══════════════════════════════════════════════════
+   업로드 모달
+══════════════════════════════════════════════════ */
+function showUploadModal() {
+  if (!authIsAdmin()) return;
+  document.getElementById('uploadResult').className = 'upload-result';
+  document.getElementById('uploadResult').textContent = '';
+  renderMonthList();
+  document.getElementById('uploadModal').classList.add('show');
+}
+
+function closeUploadModal() {
+  document.getElementById('uploadModal').classList.remove('show');
+}
+
+function renderMonthList() {
+  let uploaded = {};
+  try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+  const container = document.getElementById('monthListContainer');
+  container.innerHTML = DISPLAY_DATA.months.map(key => {
+    const r = rec(key);
+    const isBase = isBaseData(key) && !uploaded[key];
+    const isUpload = !!uploaded[key];
+    return `<div class="month-list-item">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span>${r.label}</span>
+        <span class="badge ${isBase ? 'badge-base' : 'badge-upload'}">${isBase ? '기본 데이터' : '업로드됨'}</span>
+      </div>
+      ${!isBase && isUpload && authIsAdmin()
+        ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="confirmDeleteUpload('${key}')">삭제</button>`
+        : '<span style="font-size:12px;color:var(--muted)">고정</span>'}
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);font-size:13px">등록된 월 데이터가 없습니다</div>';
+}
+
+function confirmDeleteUpload(key) {
+  const r = rec(key);
+  if (!confirm(`${r.label} 업로드 데이터를 삭제하시겠습니까?`)) return;
+  deleteUpload(key);
+  buildDisplayData();
+  if (currentMonth === key) currentMonth = DISPLAY_DATA.months[DISPLAY_DATA.months.length - 1];
+  renderTabs();
+  renderCumulative();
+  renderMonthly(currentMonth);
+  renderMonthList();
+  showResult('success', `${r.label} 데이터가 삭제되었습니다.`);
+}
+
+/* ── 파일 처리 ── */
+function setupDropZone() {
+  const zone = document.getElementById('dropZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  });
+}
+
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+  e.target.value = '';
+}
+
+async function processFile(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.xlsx')) {
+    await processExcelFile(file);
+  } else if (name.endsWith('.json')) {
+    processJsonFile(file);
+  } else {
+    showResult('error', '❌ .xlsx 또는 .json 파일만 업로드할 수 있습니다.');
+  }
+}
+
+async function processExcelFile(file) {
+  showResult('info', '⏳ 엑셀 파일 분석 중...');
+  try {
+    const buffer = await file.arrayBuffer();
+    const { monthKey, record } = parseChaeumExcel(buffer);
+
+    saveUpload(monthKey, record);
+    buildDisplayData();
+    currentMonth = monthKey;
+    renderTabs();
+    renderCumulative();
+    renderMonthly(monthKey);
+    renderMonthList();
+    showResult('success', `✅ ${record.label} 데이터가 성공적으로 등록되었습니다! 탭을 확인하세요.`);
+  } catch(err) {
+    showResult('error', `❌ 엑셀 파싱 오류: ${err.message}`);
+  }
+}
+
+function processJsonFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      const { monthKey, record, error } = validateData(parsed);
+      if (error) { showResult('error', `❌ ${error}`); return; }
+
+      saveUpload(monthKey, record);
+      buildDisplayData();
+      currentMonth = monthKey;
+      renderTabs();
+      renderCumulative();
+      renderMonthly(monthKey);
+      renderMonthList();
+      showResult('success', `✅ ${record.label} 데이터가 성공적으로 등록되었습니다! 탭을 확인하세요.`);
+    } catch(err) {
+      showResult('error', `❌ JSON 파싱 오류: ${err.message}`);
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function validateData(parsed) {
+  const monthKey = parsed.monthKey;
+  const record   = parsed.record;
+
+  if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey))
+    return { error: 'monthKey 형식이 올바르지 않습니다. 예: "2026-05"' };
+  if (!record || typeof record !== 'object')
+    return { error: 'record 객체가 없습니다.' };
+
+  const required = ['label','businessDays','headcount','cost','billing','meals',
+    'mealBreakdown','mealMix','daily','suppliers','ramen','perMealCategory','companies','headcountDetail'];
+  for (const field of required) {
+    if (record[field] == null) return { error: `필수 항목 누락: "${field}"` };
+  }
+  const costFields = ['food','labor','opex','mgmt','total'];
+  for (const f of costFields) {
+    if (record.cost[f] == null) return { error: `cost.${f} 항목 누락` };
+  }
+  return { monthKey, record };
+}
+
+function showResult(type, msg) {
+  const el = document.getElementById('uploadResult');
+  el.className = `upload-result ${type}`;
+  el.textContent = msg;
+}
+
+/* ── 템플릿 다운로드 ── */
+function downloadTemplate() {
+  const latestKey = DISPLAY_DATA.months[DISPLAY_DATA.months.length - 1];
+  const [y, m] = latestKey.split('-').map(Number);
+  const nm = m === 12 ? 1 : m + 1;
+  const ny = m === 12 ? y + 1 : y;
+  const nextKey   = `${ny}-${String(nm).padStart(2,'0')}`;
+  const nextLabel = `${ny}년 ${nm}월`;
+  const latestRec = rec(latestKey);
+
+  const template = {
+    "_version": "chaeum-dashboard-v1",
+    "_instructions": [
+      "이 파일을 메모장이나 편집기에서 열어 숫자(0)를 정산서에 맞게 수정하세요",
+      "수정 완료 후 대시보드의 [데이터 업로드] 버튼으로 이 파일을 업로드하세요",
+      "언더바(_)로 시작하는 항목은 설명용이며 업로드 시 무시됩니다"
+    ],
+    monthKey: nextKey,
+    record: {
+      label: nextLabel,
+      businessDays: 0,
+      headcount: latestRec.headcount,
+      note: "",
+
+      cost: {
+        "_설명": "단위: 원",
+        food:  0,
+        labor: 0,
+        opex:  0,
+        mgmt:  0,
+        total: 0
+      },
+
+      billing: {
+        supply: 0,
+        vat:    0,
+        total:  0
+      },
+
+      meals: {
+        prepared: 0,
+        actual:   0
+      },
+
+      mealBreakdown: latestRec.mealBreakdown.map(m => ({
+        label: m.label, prepared: 0, actual: 0
+      })),
+
+      mealMix: {
+        labels: latestRec.mealMix.labels,
+        values: latestRec.mealMix.labels.map(() => 0)
+      },
+
+      daily: [
+        { "_설명": "형식: [날짜, 준비식수, 실제식수] — 영업일만 입력" },
+        [`${nm}/1(?)`, 0, 0]
+      ],
+
+      suppliers: latestRec.suppliers.map(s => ({
+        name: s.name, amount: 0, ratio: 0
+      })),
+
+      ramen: {
+        totalCost: 0,
+        mealCount: 0,
+        items: [
+          { "_설명": "형식: { date, item, amount }" }
+        ]
+      },
+
+      perMealCategory: latestRec.perMealCategory.map(c => ({
+        label: c.label, mealCount: 0, foodCost: 0, perMeal: 0
+      })),
+
+      companies: latestRec.companies.map(c => ({
+        name: c.name, headcount: c.headcount,
+        ratio: 0, supply: 0, vat: 0, total: 0
+      })),
+
+      headcountDetail: {
+        onsite: 0, leave: 0, offsite: 0, applied: 0
+      }
+    }
+  };
+
+  const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `채움대시보드_${nextKey}_입력템플릿.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ══════════════════════════════════════════════════
+   PDF 다운로드 — 브라우저 네이티브 인쇄 엔진 사용
+   (한글·차트·레이아웃 완전 보장 / 외부 라이브러리 불필요)
+══════════════════════════════════════════════════ */
+function downloadPDF() {
+  // 열려 있는 모달 닫기
+  closeUploadModal();
+  document.getElementById('kpiModal').classList.remove('show');
+  closePwChangeModal();
+
+  // 안내 토스트 표시
+  const toast = document.createElement('div');
+  toast.className = 'pdf-toast';
+  toast.innerHTML = `
+    <div class="pdf-toast-icon">🖨️</div>
+    <div>
+      <div class="pdf-toast-title">인쇄 창이 열립니다</div>
+      <div class="pdf-toast-sub">프린터 목록에서 <strong>"PDF로 저장"</strong> 또는 <strong>"Microsoft Print to PDF"</strong> 선택</div>
+    </div>`;
+  document.body.appendChild(toast);
+
+  // 토스트 표시 후 인쇄 트리거 (beforeprint 핸들러가 차트 리사이즈를 처리)
+  setTimeout(() => {
+    window.print();
+    setTimeout(() => {
+      toast.classList.add('hiding');
+      setTimeout(() => toast.remove(), 300);
+    }, 1000);
+  }, 600);
+}
+
+/* ── 인쇄 전후 Chart.js 리사이즈 ──────────────────────────
+   beforeprint: 인쇄 CSS 높이에 맞춰 canvas 를 실제로 줄임
+                → canvas가 chart-wrap 밖으로 넘쳐 겹치는 현상 방지
+   afterprint : 화면 크기로 복원
+─────────────────────────────────────────────────────── */
+(function () {
+  const PRINT_H = { '': 185, tall: 220, short: 145 };
+
+  function _resizeForPrint() {
+    document.querySelectorAll('.chart-wrap').forEach(wrap => {
+      const key = wrap.classList.contains('tall') ? 'tall'
+                : wrap.classList.contains('short') ? 'short' : '';
+      wrap.style.height = PRINT_H[key] + 'px';
+    });
+    Object.values(Chart.instances).forEach(c => { try { c.resize(); } catch (e) {} });
+  }
+
+  function _restoreAfterPrint() {
+    document.querySelectorAll('.chart-wrap').forEach(wrap => {
+      wrap.style.height = '';
+    });
+    Object.values(Chart.instances).forEach(c => { try { c.resize(); } catch (e) {} });
+  }
+
+  window.addEventListener('beforeprint', _resizeForPrint);
+  window.addEventListener('afterprint',  _restoreAfterPrint);
+}());
+
+/* ══════════════════════════════════════════════════
+   공통 모달 닫기
+══════════════════════════════════════════════════ */
+document.getElementById('uploadModal').addEventListener('click', e => {
+  if (e.target.id === 'uploadModal') closeUploadModal();
+});
+document.getElementById('kpiModal').addEventListener('click', e => {
+  if (e.target.id === 'kpiModal') document.getElementById('kpiModal').classList.remove('show');
+});
+document.getElementById('pwModal').addEventListener('click', e => {
+  if (e.target.id === 'pwModal') closePwChangeModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  closeUploadModal();
+  closePwChangeModal();
+  document.getElementById('kpiModal').classList.remove('show');
+});
+
+/* ══════════════════════════════════════════════════
+   비밀번호 변경 모달
+══════════════════════════════════════════════════ */
+function showPwChangeModal() {
+  ['pwCurrent','pwAdminNew','pwAdminConfirm','pwViewerNew','pwViewerConfirm']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  const res = document.getElementById('pwResult');
+  res.className = 'pw-result';
+  res.style.display = 'none';
+  document.getElementById('pwSaveBtn').disabled = false;
+  document.getElementById('pwModal').classList.add('show');
+  setTimeout(() => document.getElementById('pwCurrent').focus(), 0);
+}
+
+function closePwChangeModal() {
+  document.getElementById('pwModal').classList.remove('show');
+}
+
+function _pwShowResult(type, msg) {
+  const el = document.getElementById('pwResult');
+  el.className = 'pw-result ' + type;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function submitPwChange() {
+  const currentAdminPw  = document.getElementById('pwCurrent').value;
+  const newAdminPw      = document.getElementById('pwAdminNew').value;
+  const newAdminConfirm = document.getElementById('pwAdminConfirm').value;
+  const newViewerPw     = document.getElementById('pwViewerNew').value;
+  const newViewerConfirm= document.getElementById('pwViewerConfirm').value;
+
+  if (!currentAdminPw) {
+    _pwShowResult('error', '현재 관리자 비밀번호를 입력하세요.'); return;
+  }
+  if (!newAdminPw && !newViewerPw) {
+    _pwShowResult('error', '변경할 비밀번호를 하나 이상 입력하세요.'); return;
+  }
+  if (newAdminPw) {
+    if (newAdminPw.length < 8) {
+      _pwShowResult('error', '관리자 새 비밀번호는 8자 이상이어야 합니다.'); return;
+    }
+    if (newAdminPw !== newAdminConfirm) {
+      _pwShowResult('error', '관리자 새 비밀번호가 일치하지 않습니다.'); return;
+    }
+  }
+  if (newViewerPw) {
+    if (newViewerPw.length < 8) {
+      _pwShowResult('error', '열람 새 비밀번호는 8자 이상이어야 합니다.'); return;
+    }
+    if (newViewerPw !== newViewerConfirm) {
+      _pwShowResult('error', '열람 새 비밀번호가 일치하지 않습니다.'); return;
+    }
+  }
+
+  const saveBtn = document.getElementById('pwSaveBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '저장 중...';
+
+  const result = await authChangePasswords({ currentAdminPw, newAdminPw, newViewerPw });
+
+  saveBtn.disabled = false;
+  saveBtn.textContent = '변경 저장';
+
+  if (result === 'ok') {
+    const changed = [];
+    if (newAdminPw)  changed.push('관리자 비밀번호');
+    if (newViewerPw) changed.push('열람 비밀번호');
+    _pwShowResult('success', `✅ ${changed.join(', ')}가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용하세요.`);
+    setTimeout(closePwChangeModal, 2200);
+  } else if (result === 'wrong_current') {
+    _pwShowResult('error', '현재 관리자 비밀번호가 올바르지 않습니다.');
+    document.getElementById('pwCurrent').select();
+    document.getElementById('pwCurrent').focus();
+  } else {
+    _pwShowResult('error', '오류가 발생했습니다. 관리자 권한을 확인하세요.');
+  }
+}
+</script>
+</body>
+</html>
