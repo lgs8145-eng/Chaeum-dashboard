@@ -49,6 +49,28 @@ function _serialToYMD(serial) {
   } catch (e) { return null; }
 }
 
+// 셀 값(숫자 시리얼 · JS Date · 텍스트) → { year, month, day }
+function _cellToYMD(sheet, addr) {
+  const c = sheet[addr];
+  if (!c) return null;
+  if (c.t === 'd') {
+    const d = c.v;
+    return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+  }
+  if (typeof c.v === 'number') return _serialToYMD(c.v);
+  if (c.t === 's') {
+    const m = String(c.v).trim().match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (m) return { year: +m[1], month: +m[2], day: +m[3] };
+  }
+  return null;
+}
+
+// { year, month, day } → "M/D(요일)"
+function _ymdToKorean(ymd) {
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  return `${ymd.month}/${ymd.day}(${days[new Date(ymd.year, ymd.month - 1, ymd.day).getDay()]})`;
+}
+
 /* ── 메인 파서 ─────────────────────────────────────────── */
 
 /**
@@ -131,14 +153,13 @@ function parseChaeumExcel(arrayBuffer) {
   let settlementYear = null, settlementMonth = null;
 
   for (let row = 4; row <= 60; row++) {
-    const dateSerial = _cn(sh식수, `B${row}`);
-    const vPrepared  = _cn(sh식수, `V${row}`);
-    if (!dateSerial || !vPrepared) break;
+    const ymd       = _cellToYMD(sh식수, `B${row}`);
+    const vPrepared = _cn(sh식수, `V${row}`);
+    if (!ymd || vPrepared == null) break;
 
     businessDays++;
-    const dateStr = _serialToKoreanDate(dateSerial);
-    const ymd = _serialToYMD(dateSerial);
-    if (ymd && !settlementYear) {
+    const dateStr = _ymdToKorean(ymd);
+    if (!settlementYear) {
       settlementYear  = ymd.year;
       settlementMonth = ymd.month;
     }
@@ -217,8 +238,8 @@ function parseChaeumExcel(arrayBuffer) {
       if (!item && !amount) break;
       if (!item || !amount || amount <= 0) continue;
 
-      const dateSerial = _cn(sh라면, `B${row}`);
-      const dateStr = dateSerial ? _serialToKoreanDate(dateSerial) : '';
+      const dateYmd = _cellToYMD(sh라면, `B${row}`);
+      const dateStr = dateYmd ? _ymdToKorean(dateYmd) : '';
       ramenItems.push({ date: dateStr, item, amount: Math.round(amount) });
       ramenTotalCost += amount;
     }

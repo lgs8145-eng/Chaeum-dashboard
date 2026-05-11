@@ -547,7 +547,11 @@ function saveUpload(monthKey, record) {
   let uploaded = {};
   try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
   uploaded[monthKey] = record;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(uploaded));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(uploaded));
+  } catch(e) {
+    throw new Error('브라우저 저장소 접근이 차단되었습니다. Edge/Safari의 추적 방지 설정을 확인하거나 파일을 서버를 통해 열어주세요.');
+  }
 }
 
 function deleteUpload(monthKey) {
