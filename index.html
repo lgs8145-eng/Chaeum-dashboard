@@ -304,21 +304,19 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
     <div class="chart-wrap"><canvas id="trendCostChart"></canvas></div>
   </div>
 </div>
-<div class="row cols-3">
+<!-- ══ 연누계 현황 ══ -->
+<div class="section-label">📊 연누계 현황 <span style="font-size:12px;font-weight:400;color:var(--muted)">— 당해 연도 월별 누적 합산 · 월 추가 시 자동 갱신</span></div>
+<div class="kpi-grid" id="ytdKpiGrid"></div>
+<div class="row cols-2c">
   <div class="card">
-    <h3>1인 식자재비 추이</h3>
-    <div class="desc">식자재비 ÷ 정산 인원 (월)</div>
-    <div class="chart-wrap short"><canvas id="trendPerPersonChart"></canvas></div>
+    <h3>월별 원가 구성 누계</h3>
+    <div class="desc">원가 항목별 월별 누적 (천원)</div>
+    <div class="chart-wrap"><canvas id="ytdCostChart"></canvas></div>
   </div>
   <div class="card">
-    <h3>1식당 단가 추이</h3>
-    <div class="desc">공급가 ÷ 실제 식수 (월)</div>
-    <div class="chart-wrap short"><canvas id="trendUnitPriceChart"></canvas></div>
-  </div>
-  <div class="card">
-    <h3>월별 실제 식수</h3>
-    <div class="desc">총 실제 식수 (식)</div>
-    <div class="chart-wrap short"><canvas id="trendMealsChart"></canvas></div>
+    <h3>연누계 원가 비중</h3>
+    <div class="desc" id="ytdDonutDesc"></div>
+    <div class="chart-wrap"><canvas id="ytdCostDonut"></canvas></div>
   </div>
 </div>
 
@@ -664,9 +662,6 @@ function renderCumulative() {
   const labor  = keys.map(k => Math.round(rec(k).cost.labor / 1000));
   const opex   = keys.map(k => Math.round(rec(k).cost.opex  / 1000));
   const mgmt   = keys.map(k => Math.round(rec(k).cost.mgmt  / 1000));
-  const ppFood = keys.map(k => Math.round(rec(k).cost.food  / rec(k).headcount));
-  const unit   = keys.map(k => Math.round(rec(k).cost.total / rec(k).meals.actual));
-  const meals  = keys.map(k => rec(k).meals.actual);
 
   setChart('trendSupplyChart', {
     type:'bar', data:{ labels, datasets:[{ label:'공급가액(천원)', data:supply, backgroundColor:'#2563eb', borderRadius:6 }] },
@@ -676,39 +671,93 @@ function renderCumulative() {
 
   setChart('trendCostChart', {
     type:'bar', data:{ labels, datasets:[
-      { label:'식재료비', data:food,  backgroundColor:'#2563eb', stack:'s' },
-      { label:'인건비',   data:labor, backgroundColor:'#7c3aed', stack:'s' },
-      { label:'경비',     data:opex,  backgroundColor:'#d97706', stack:'s' },
-      { label:'운영관리비', data:mgmt, backgroundColor:'#16a34a', stack:'s' }
+      { label:'식재료비',   data:food,  backgroundColor:'#2563eb', stack:'s' },
+      { label:'인건비',     data:labor, backgroundColor:'#7c3aed', stack:'s' },
+      { label:'경비',       data:opex,  backgroundColor:'#d97706', stack:'s' },
+      { label:'운영관리비', data:mgmt,  backgroundColor:'#16a34a', stack:'s' }
     ]},
     options:{ ...BASE_OPTS, scales:{ x:{stacked:true}, y:{ stacked:true, ticks:{callback:v=>fmt(v)+'천'} } },
       plugins:{ ...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)+'천원'}} } }
   });
 
-  const lineOpts = (color) => ({
-    ...BASE_OPTS,
-    scales:{ y:{ ticks:{callback:v=>fmt(v)} } },
-    plugins:{ ...BASE_OPTS.plugins, legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)+'원'}} }
+  renderYTD();
+}
+
+/* ══════════════════════════════════════════════════
+   연누계 현황
+══════════════════════════════════════════════════ */
+function renderYTD() {
+  const allKeys = DISPLAY_DATA.months;
+  if (allKeys.length === 0) return;
+
+  // 가장 최근 데이터 기준 연도로 필터
+  const latestYear = allKeys[allKeys.length - 1].split('-')[0];
+  const ytdKeys    = allKeys.filter(k => k.startsWith(latestYear));
+  const n          = ytdKeys.length;
+  if (n === 0) return;
+
+  // 연누계 집계
+  const ytdSupply  = ytdKeys.reduce((s, k) => s + rec(k).cost.total,   0);
+  const ytdBilling = ytdKeys.reduce((s, k) => s + rec(k).billing.total, 0);
+  const ytdMeals   = ytdKeys.reduce((s, k) => s + rec(k).meals.actual,  0);
+  const ytdFood    = ytdKeys.reduce((s, k) => s + rec(k).cost.food,     0);
+  const ytdLabor   = ytdKeys.reduce((s, k) => s + rec(k).cost.labor,    0);
+  const ytdOpex    = ytdKeys.reduce((s, k) => s + rec(k).cost.opex,     0);
+  const ytdMgmt    = ytdKeys.reduce((s, k) => s + rec(k).cost.mgmt,     0);
+  const ytdPerMeal = ytdMeals > 0 ? Math.round(ytdSupply / ytdMeals) : 0;
+
+  // KPI 카드
+  document.getElementById('ytdKpiGrid').innerHTML = `
+    <div class="kpi" style="border-top:3px solid var(--primary)">
+      <div class="lbl">${latestYear}년 누계 공급가액</div>
+      <div class="val">${fmt천(ytdSupply)}<span class="unit">천원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${n}개월 누계 · 월평균 ${fmt천(Math.round(ytdSupply/n))}천원</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #7c3aed">
+      <div class="lbl">${latestYear}년 누계 청구금액</div>
+      <div class="val">${fmt천(ytdBilling)}<span class="unit">천원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">VAT 포함 · 월평균 ${fmt천(Math.round(ytdBilling/n))}천원</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #16a34a">
+      <div class="lbl">${latestYear}년 누계 식수</div>
+      <div class="val">${fmt(ytdMeals)}<span class="unit">식</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">월평균 ${fmt(Math.round(ytdMeals/n))}식</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #d97706">
+      <div class="lbl">누계 평균 1식당 단가</div>
+      <div class="val">${fmt(ytdPerMeal)}<span class="unit">원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">누계 공급가 ÷ 누계 식수</div>
+    </div>`;
+
+  const labels = ytdKeys.map(k => rec(k).label.replace(latestYear+'년 ', ''));
+
+  // 월별 원가 구성 누계 (스택 바)
+  setChart('ytdCostChart', {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label:'식재료비',   data:ytdKeys.map(k=>Math.round(rec(k).cost.food/1000)),  backgroundColor:'#2563eb', stack:'s' },
+      { label:'인건비',     data:ytdKeys.map(k=>Math.round(rec(k).cost.labor/1000)), backgroundColor:'#7c3aed', stack:'s' },
+      { label:'경비',       data:ytdKeys.map(k=>Math.round(rec(k).cost.opex/1000)),  backgroundColor:'#d97706', stack:'s' },
+      { label:'운영관리비', data:ytdKeys.map(k=>Math.round(rec(k).cost.mgmt/1000)),  backgroundColor:'#16a34a', stack:'s' }
+    ]},
+    options:{ ...BASE_OPTS,
+      scales:{ x:{stacked:true}, y:{ stacked:true, ticks:{callback:v=>fmt(v)+'천'} } },
+      plugins:{ ...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)+'천원'}} } }
   });
 
-  setChart('trendPerPersonChart', {
-    type:'line', data:{ labels, datasets:[{ label:'1인 월 식자재비', data:ppFood,
-      borderColor:'#1e40af', backgroundColor:'rgba(30,64,175,.12)', fill:true,
-      tension:.3, pointRadius:5, pointBackgroundColor:'#1e40af', borderWidth:2.5 }] },
-    options: lineOpts('#1e40af')
-  });
-
-  setChart('trendUnitPriceChart', {
-    type:'line', data:{ labels, datasets:[{ label:'1식당 단가', data:unit,
-      borderColor:'#7c3aed', backgroundColor:'rgba(124,58,237,.12)', fill:true,
-      tension:.3, pointRadius:5, pointBackgroundColor:'#7c3aed', borderWidth:2.5 }] },
-    options: lineOpts('#7c3aed')
-  });
-
-  setChart('trendMealsChart', {
-    type:'bar', data:{ labels, datasets:[{ label:'실제 식수(식)', data:meals, backgroundColor:'#16a34a', borderRadius:6 }] },
-    options:{ ...BASE_OPTS, scales:{ y:{ ticks:{callback:v=>fmt(v)} } },
-      plugins:{ ...BASE_OPTS.plugins, legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)+'식'}} } }
+  // 연누계 원가 비중 (도넛)
+  const p = v => (v/ytdSupply*100).toFixed(1);
+  document.getElementById('ytdDonutDesc').textContent =
+    `${latestYear}년 ${n}개월 누계 · 공급가액 ${fmt천(ytdSupply)}천원`;
+  setChart('ytdCostDonut', {
+    type:'doughnut',
+    data:{
+      labels:[`식재료비 ${p(ytdFood)}%`,`인건비 ${p(ytdLabor)}%`,`경비 ${p(ytdOpex)}%`,`운영관리비 ${p(ytdMgmt)}%`],
+      datasets:[{ data:[ytdFood,ytdLabor,ytdOpex,ytdMgmt],
+        backgroundColor:['#2563eb','#7c3aed','#d97706','#16a34a'] }]
+    },
+    options:{ ...BASE_OPTS, cutout:'62%',
+      plugins:{ ...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.label.split(' ')[0]+': '+fmt천(c.raw)+'천원'}} } }
   });
 }
 
