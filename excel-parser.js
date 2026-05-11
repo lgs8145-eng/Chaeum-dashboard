@@ -71,6 +71,26 @@ function _ymdToKorean(ymd) {
   return `${ymd.month}/${ymd.day}(${days[new Date(ymd.year, ymd.month - 1, ymd.day).getDay()]})`;
 }
 
+// 3행 헤더를 읽어 { 헤더명: 열문자 } 맵 반환 — 월별 열 구조 차이 자동 대응
+function _findCols(sheet) {
+  const map = {};
+  for (let ci = 0; ci < 26; ci++) {
+    const col = String.fromCharCode(65 + ci);
+    const c = sheet[col + '3'];
+    if (c && c.v != null) map[String(c.v).trim()] = col;
+  }
+  return map;
+}
+
+// B열에서 "계" 텍스트가 있는 집계 행 번호 탐색
+function _findSumRow(sheet) {
+  for (let r = 20; r <= 40; r++) {
+    const c = sheet['B' + r];
+    if (c && String(c.v).trim() === '계') return r;
+  }
+  return 26;
+}
+
 /* ── 메인 파서 ─────────────────────────────────────────── */
 
 /**
@@ -128,24 +148,45 @@ function parseChaeumExcel(arrayBuffer) {
   }
 
   /* ── 5. 일별 식수 (별첨3)식사인원) ────────────────── */
-  // 집계 행: 26번 행
-  const mPrepared   = Math.round(_cn(sh식수, 'D26') || 0); // 조식 준비
-  const mActual     = Math.round(_cn(sh식수, 'E26') || 0); // 조식 실제
-  const mSnack1     = Math.round(_cn(sh식수, 'F26') || 0); // 간편식1
-  const mSnack2     = Math.round(_cn(sh식수, 'G26') || 0); // 간편식2
-  const mRamen      = Math.round(_cn(sh식수, 'H26') || 0); // 조식 라면
-  const laAPrepared = Math.round(_cn(sh식수, 'J26') || 0); // 중식A 준비
-  const laAActual   = Math.round(_cn(sh식수, 'K26') || 0); // 중식A 실제
-  const laBPrepared = Math.round(_cn(sh식수, 'L26') || 0); // 중식B 준비
-  const laBActual   = Math.round(_cn(sh식수, 'M26') || 0); // 중식B 실제
-  const lRamen      = Math.round(_cn(sh식수, 'N26') || 0); // 중식 라면
-  const lSalad      = Math.round(_cn(sh식수, 'O26') || 0); // 중식 샐러드
-  const dPrepared   = Math.round(_cn(sh식수, 'Q26') || 0); // 석식 준비
-  const dActual     = Math.round(_cn(sh식수, 'R26') || 0); // 석식 실제
-  const dRamen      = Math.round(_cn(sh식수, 'S26') || 0); // 석식 라면
-  const dHotpot     = Math.round(_cn(sh식수, 'T26') || 0); // 즉석전골
-  const totalPrepared = Math.round(_cn(sh식수, 'V26') || 0);
-  const totalActual   = Math.round(_cn(sh식수, 'W26') || 0);
+  // 헤더(3행)로 열 위치 자동 탐지 — 월별 열 구조 차이 자동 대응
+  const cols   = _findCols(sh식수);
+  const sumRow = _findSumRow(sh식수);
+
+  const cMP  = cols['(M)준비']    || 'D';
+  const cMA  = cols['(M)실제']    || 'E';
+  const cMS1 = cols['(M)간편식1'] || 'F';
+  const cMS2 = cols['(M)간편식2'] || 'G';
+  const cMR  = cols['(M)라면']    || 'H';
+  const cLAP = cols['(L)A준비']   || 'J';
+  const cLAA = cols['(L)A실제']   || 'K';
+  const cLBP = cols['(L)B준비']   || 'L';
+  const cLBA = cols['(L)B실제']   || 'M';
+  const cLR  = cols['(L)라면']    || 'N';
+  const cLS  = cols['(L)샐러드']  || null; // 월별 선택 컬럼
+  const cDP  = cols['(D)준비']    || 'Q';
+  const cDA  = cols['(D)실제']    || 'R';
+  const cDR  = cols['(D)라면']    || 'S';
+  const cDH  = cols['즉석전골']   || null; // 월별 선택 컬럼
+  const cTP  = cols['합계(준비)'] || 'V';
+  const cTA  = cols['합계(실제)'] || 'W';
+
+  const mPrepared   = Math.round(_cn(sh식수, cMP  + sumRow) || 0);
+  const mActual     = Math.round(_cn(sh식수, cMA  + sumRow) || 0);
+  const mSnack1     = Math.round(_cn(sh식수, cMS1 + sumRow) || 0);
+  const mSnack2     = Math.round(_cn(sh식수, cMS2 + sumRow) || 0);
+  const mRamen      = Math.round(_cn(sh식수, cMR  + sumRow) || 0);
+  const laAPrepared = Math.round(_cn(sh식수, cLAP + sumRow) || 0);
+  const laAActual   = Math.round(_cn(sh식수, cLAA + sumRow) || 0);
+  const laBPrepared = Math.round(_cn(sh식수, cLBP + sumRow) || 0);
+  const laBActual   = Math.round(_cn(sh식수, cLBA + sumRow) || 0);
+  const lRamen      = Math.round(_cn(sh식수, cLR  + sumRow) || 0);
+  const lSalad      = cLS ? Math.round(_cn(sh식수, cLS + sumRow) || 0) : 0;
+  const dPrepared   = Math.round(_cn(sh식수, cDP  + sumRow) || 0);
+  const dActual     = Math.round(_cn(sh식수, cDA  + sumRow) || 0);
+  const dRamen      = Math.round(_cn(sh식수, cDR  + sumRow) || 0);
+  const dHotpot     = cDH ? Math.round(_cn(sh식수, cDH + sumRow) || 0) : 0;
+  const totalPrepared = Math.round(_cn(sh식수, cTP + sumRow) || 0);
+  const totalActual   = Math.round(_cn(sh식수, cTA + sumRow) || 0);
 
   // 일별 데이터 (행 4부터 연속)
   const daily = [];
@@ -154,7 +195,7 @@ function parseChaeumExcel(arrayBuffer) {
 
   for (let row = 4; row <= 60; row++) {
     const ymd       = _cellToYMD(sh식수, `B${row}`);
-    const vPrepared = _cn(sh식수, `V${row}`);
+    const vPrepared = _cn(sh식수, cTP + row);
     if (!ymd || vPrepared == null) break;
 
     businessDays++;
@@ -163,7 +204,7 @@ function parseChaeumExcel(arrayBuffer) {
       settlementYear  = ymd.year;
       settlementMonth = ymd.month;
     }
-    daily.push([dateStr, Math.round(vPrepared), Math.round(_cn(sh식수, `W${row}`) || 0)]);
+    daily.push([dateStr, Math.round(vPrepared), Math.round(_cn(sh식수, cTA + row) || 0)]);
   }
 
   if (!settlementYear) throw new Error('정산 월을 식수 시트에서 읽을 수 없습니다. 날짜 셀을 확인하세요.');
