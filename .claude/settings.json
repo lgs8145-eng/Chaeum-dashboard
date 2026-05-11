@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(ls \"C:/Users/Owner/Desktop/채움대시보드/\" 2>/dev/null || echo \"not found\")",
+      "Read(//c/Users/Owner/Desktop/채움대시보드/**)",
+      "Bash(ls \"C:\\\\Users\\\\Owner\\\\Desktop\\\\채움대시보드\\\\\" 2>&1 | head -50)",
+      "Read(//c/Users/Owner/Desktop/**)"
+    ]
+  }
+}

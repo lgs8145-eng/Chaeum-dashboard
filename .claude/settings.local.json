@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\Owner\\\\Desktop\\\\claudestudy\\\\채움대시보드\")",
+      "Bash(Select-Object Name, Length)",
+      "Read(//c/Users/Owner/.claude/projects/**)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Read(//c/Users/Owner/.claude/**)",
+      "Bash(vercel --version)",
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)",
+      "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(git pull *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git rebase *)",
+      "Bash(git push *)",
+      "Bash(npm list *)",
+      "Bash(node -e ' *)",
+      "Bash(npm install *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Owner\\.claude"
+    ]
+  }
+}
