@@ -841,19 +841,6 @@ function renderCostStack(r, pr) {
   document.getElementById('costNote').innerHTML = r.note ? `<div class="note">⚠ ${r.note}</div>` : '';
 }
 
-function renderCostDonut(r) {
-  document.getElementById('costDonutDesc').textContent = `${r.label} 공급가 ${fmt천(r.cost.total)}천원 구성`;
-  const p = f => (r.cost[f]/r.cost.total*100).toFixed(1);
-  setChart('costDonutChart', {
-    type:'doughnut',
-    data:{labels:[`식재료비 ${p('food')}%`,`인건비 ${p('labor')}%`,`경비 ${p('opex')}%`,`운영관리비 ${p('mgmt')}%`],
-      datasets:[{data:[r.cost.food,r.cost.labor,r.cost.opex,r.cost.mgmt],
-        backgroundColor:['#2563eb','#7c3aed','#d97706','#16a34a']}]},
-    options:{...BASE_OPTS, cutout:'62%',
-      plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.label.split(' ')[0]+': '+fmt(c.raw)+'원'}}}}
-  });
-}
-
 function renderSuppliers(r) {
   document.getElementById('supplierDesc').textContent = `${r.label} 식자재비 ${fmt천(r.cost.food)}천원 — 거래처별 매입 분포`;
   setChart('supplierChart', {

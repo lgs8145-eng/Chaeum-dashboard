@@ -74,13 +74,16 @@ function setCookie(res, value, maxAge) {
 }
 
 async function getHashes() {
-  const stored = await rGet('chaeum_pw');
-  return stored || DEFAULT_HASHES;
+  try {
+    const stored = await rGet('chaeum_pw');
+    return stored || DEFAULT_HASHES;
+  } catch { return DEFAULT_HASHES; }
 }
 
 // ── 핸들러 ───────────────────────────────────────────────────
 module.exports = async (req, res) => {
   const action = (req.query && req.query.action) || '';
+  try {
 
   // ── 로그인 ──────────────────────────────────────────────────
   if (action === 'login' && req.method === 'POST') {
@@ -141,5 +144,9 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
-  return res.status(404).json({ ok: false, error: 'unknown action' });
+    return res.status(404).json({ ok: false, error: 'unknown action' });
+  } catch (err) {
+    console.error('[api/auth]', err);
+    return res.status(500).json({ ok: false, error: 'server_error' });
+  }
 };
