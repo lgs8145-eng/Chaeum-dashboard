@@ -10,8 +10,10 @@
  * KV 미설정 시 아래 DEFAULT_HASHES 로 fallback (최초 배포 한정).
  */
 
-const { kv }   = require('@vercel/kv');
-const crypto   = require('crypto');
+const { Redis } = require('@upstash/redis');
+const crypto    = require('crypto');
+
+const kv = Redis.fromEnv(); // REDIS_URL + REDIS_TOKEN 환경변수 자동 사용
 
 const TOKEN_TTL_SEC = 8 * 3600; // 8시간
 
