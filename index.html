@@ -6,15 +6,14 @@
 <title>구내식당(채움) 운영 대시보드</title>
 <script src="auth.js"></script>
 <script>
-/* 즉시 인증 확인 — 세션 없으면 로그인 페이지로 */
-(function(){
-  var s=null;
-  try{s=JSON.parse(sessionStorage.getItem('chaeum_session_v1'));}catch(e){}
-  if(!s||!s.role||!s.time||(Date.now()-s.time>28800000)){
-    window.location.replace('login.html');
-  }
+/* 인증 확인 — 서버 쿠키 검증 후 페이지 표시 */
+(async function(){
+  const s = await authGetSession();
+  if (!s) { window.location.replace('login.html'); return; }
+  document.documentElement.style.visibility = 'visible';
 })();
 </script>
+<style>html{visibility:hidden}</style>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="excel-parser.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -587,9 +586,9 @@ const SUP_COLORS = ['#2563eb','#7c3aed','#0891b2','#d97706','#16a34a','#fca5a5']
 /* ══════════════════════════════════════════════════
    초기화
 ══════════════════════════════════════════════════ */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // ── 세션 확인 및 역할 기반 UI ──
-  const session = authGetSession();
+  const session = await authGetSession();
   if (!session) return; // 이미 head에서 리다이렉트됨
 
   const roleEl = document.getElementById('userRole');

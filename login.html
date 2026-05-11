@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>로그인 — 채움 운영 대시보드</title>
 <script src="auth.js"></script>
-<script>(function(){if(authGetSession())window.location.replace('index.html');})();</script>
+<script>(async function(){const s=await authGetSession();if(s)window.location.replace('index.html');})();</script>
 <style>
 :root {
   --bg:#f5f7fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
