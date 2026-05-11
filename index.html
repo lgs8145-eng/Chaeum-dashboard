@@ -56,7 +56,7 @@ body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Got
   border-radius:0 8px 8px 0}
 
 /* ── KPI cards ── */
-.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;
   box-shadow:0 1px 2px rgba(15,23,42,.04)}
 .kpi .lbl{font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px}
@@ -670,9 +670,8 @@ function renderYTD() {
   if (n === 0) return;
 
   // 연누계 집계
-  const ytdSupply  = ytdKeys.reduce((s, k) => s + rec(k).cost.total,   0);
-  const ytdBilling = ytdKeys.reduce((s, k) => s + rec(k).billing.total, 0);
-  const ytdMeals   = ytdKeys.reduce((s, k) => s + rec(k).meals.actual,  0);
+  const ytdSupply  = ytdKeys.reduce((s, k) => s + rec(k).cost.total,  0);
+  const ytdMeals   = ytdKeys.reduce((s, k) => s + rec(k).meals.actual, 0);
   const ytdFood    = ytdKeys.reduce((s, k) => s + rec(k).cost.food,     0);
   const ytdLabor   = ytdKeys.reduce((s, k) => s + rec(k).cost.labor,    0);
   const ytdOpex    = ytdKeys.reduce((s, k) => s + rec(k).cost.opex,     0);
@@ -685,11 +684,6 @@ function renderYTD() {
       <div class="lbl">${latestYear}년 누계 공급가액</div>
       <div class="val">${fmt천(ytdSupply)}<span class="unit">천원</span></div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">${n}개월 누계 · 월평균 ${fmt천(Math.round(ytdSupply/n))}천원</div>
-    </div>
-    <div class="kpi" style="border-top:3px solid #7c3aed">
-      <div class="lbl">${latestYear}년 누계 청구금액</div>
-      <div class="val">${fmt천(ytdBilling)}<span class="unit">천원</span></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">VAT 포함 · 월평균 ${fmt천(Math.round(ytdBilling/n))}천원</div>
     </div>
     <div class="kpi" style="border-top:3px solid #16a34a">
       <div class="lbl">${latestYear}년 누계 식수</div>
@@ -768,11 +762,6 @@ function renderKPIs(r, pr) {
       <div class="lbl">총 공급가액</div>
       <div class="val">${fmt천(r.cost.total)}<span class="unit">천원</span></div>
       ${deltaHtml(r.cost.total, pr?.cost.total)}
-    </div>
-    <div class="kpi">
-      <div class="lbl">청구분 (VAT 포함)</div>
-      <div class="val">${fmt천(r.billing.total)}<span class="unit">천원</span></div>
-      ${deltaHtml(r.billing.total, pr?.billing.total)}
     </div>
     <div class="kpi">
       <div class="lbl">실제 식수 (총)</div>
