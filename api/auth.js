@@ -43,8 +43,15 @@ function memGet(token) {
 let _client = null;
 
 async function getRedis() {
+  if (!process.env.REDIS_URL) throw new Error('REDIS_URL not set');
   if (_client && _client.isOpen) return _client;
-  const c = createClient({ url: process.env.REDIS_URL });
+  const c = createClient({
+    url: process.env.REDIS_URL,
+    socket: {
+      connectTimeout: 3000,   // 3초 내 연결 안 되면 에러
+      reconnectStrategy: false, // 서버리스에서 무한 재연결 방지
+    },
+  });
   c.on('error', () => { if (_client === c) _client = null; });
   await c.connect();
   _client = c;
@@ -97,13 +104,15 @@ function setCookie(res, value, maxAge) {
 async function getHashes() {
   try {
     const stored = await rGet('chaeum_pw');
-    // 버전 불일치(구버전 또는 미설정) → DEFAULT_HASHES로 덮어쓰고 반환
     if (!stored || stored.v !== PW_VERSION) {
-      try { await rSet('chaeum_pw', DEFAULT_HASHES); } catch {}
+      // 버전 불일치 → DEFAULT_HASHES 덮어쓰기 (실패해도 무시)
+      rSet('chaeum_pw', DEFAULT_HASHES).catch(() => {});
       return DEFAULT_HASHES;
     }
     return stored;
-  } catch { return DEFAULT_HASHES; }
+  } catch {
+    return DEFAULT_HASHES;
+  }
 }
 
 // ── 핸들러 ───────────────────────────────────────────────────
