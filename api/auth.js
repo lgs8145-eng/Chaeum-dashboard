@@ -22,11 +22,11 @@ const DEFAULT_HASHES = {
 let _client = null;
 
 async function getRedis() {
-  if (!_client || !_client.isOpen) {
-    _client = createClient({ url: process.env.REDIS_URL });
-    _client.on('error', () => { _client = null; });
-    await _client.connect();
-  }
+  if (_client && _client.isOpen) return _client;
+  const c = createClient({ url: process.env.REDIS_URL });
+  c.on('error', () => { if (_client === c) _client = null; });
+  await c.connect();
+  _client = c;
   return _client;
 }
 
@@ -144,9 +144,12 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
-    return res.status(404).json({ ok: false, error: 'unknown action' });
+      return res.status(404).json({ ok: false, error: 'unknown action' });
   } catch (err) {
     console.error('[api/auth]', err);
     return res.status(500).json({ ok: false, error: 'server_error' });
   }
 };
+
+// Vercel: JSON body 자동 파싱 명시
+module.exports.config = { api: { bodyParser: true } };

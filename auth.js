@@ -29,6 +29,7 @@ function authIsAdmin() {
 }
 
 // 로그인 — 서버에 자격증명 전달, 성공 시 쿠키 자동 설정
+// 반환값: 'admin' | 'viewer' | null(인증실패) | 'server_error' | 'network_error'
 async function authLogin(id, pw) {
   try {
     const res = await fetch('/api/auth?action=login', {
@@ -37,12 +38,13 @@ async function authLogin(id, pw) {
       headers:     { 'Content-Type': 'application/json' },
       body:        JSON.stringify({ id, pw }),
     });
-    if (!res.ok) return null;
+    if (res.status === 401 || res.status === 400) return null; // 인증 실패
+    if (!res.ok) return 'server_error';                        // 5xx 등 서버 오류
     const data   = await res.json();
     _sessionRole    = data.role || null;
-    _sessionPromise = Promise.resolve(data); // 캐시 갱신
+    _sessionPromise = Promise.resolve(data);
     return data.role || null;
-  } catch (e) { return null; }
+  } catch (e) { return 'network_error'; }
 }
 
 // 비밀번호 변경 — 서버에서 KV 업데이트 (전 기기 즉시 반영)

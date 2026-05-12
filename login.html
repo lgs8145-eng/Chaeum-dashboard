@@ -211,19 +211,26 @@ async function doLogin() {
 
   const role = await authLogin(id, pw);
 
-  if (role) {
+  if (role === 'admin' || role === 'viewer') {
     window.location.replace('index.html');
+    return;
+  }
+
+  const errEl = document.getElementById('loginError');
+  if (role === 'server_error') {
+    errEl.textContent = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+  } else if (role === 'network_error') {
+    errEl.textContent = '네트워크 연결을 확인해주세요.';
   } else {
-    const errEl = document.getElementById('loginError');
     errEl.textContent = _mode === 'admin'
       ? '아이디 또는 비밀번호가 올바르지 않습니다.'
       : '비밀번호가 올바르지 않습니다.';
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = '로그인';
-    const focusEl = document.getElementById(_mode === 'admin' ? 'adminPw' : 'viewerPw');
-    if (focusEl) { focusEl.select(); focusEl.focus(); }
   }
+  errEl.style.display = 'block';
+  btn.disabled = false;
+  btn.textContent = '로그인';
+  const focusEl = document.getElementById(_mode === 'admin' ? 'adminPw' : 'viewerPw');
+  if (focusEl) { focusEl.select(); focusEl.focus(); }
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
