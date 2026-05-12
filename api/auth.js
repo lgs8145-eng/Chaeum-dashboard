@@ -18,6 +18,23 @@ const DEFAULT_HASHES = {
   viewerHash: '35cbe0aaf4e558ac53847cf7b057f4a3a86a427e08935bffdf81d7b4ed7cd9f3',
 };
 
+// Redis 불가 시 인메모리 세션 fallback (콜드 스타트 시 초기화되나 저트래픽 환경에서 허용)
+const _memSessions = new Map();
+
+function memSet(token, role) {
+  if (_memSessions.size > 200) {
+    const now = Date.now();
+    for (const [k, v] of _memSessions) { if (v.exp < now) _memSessions.delete(k); }
+  }
+  _memSessions.set(token, { role, exp: Date.now() + TOKEN_TTL_SEC * 1000 });
+}
+
+function memGet(token) {
+  const s = _memSessions.get(token);
+  if (!s || s.exp < Date.now()) { _memSessions.delete(token); return null; }
+  return s.role;
+}
+
 // 서버리스 환경: 웜 실행 시 연결 재사용, 끊김 시 자동 재연결
 let _client = null;
 
@@ -100,7 +117,8 @@ module.exports = async (req, res) => {
     if (!role) return res.status(401).json({ ok: false });
 
     const token = makeToken();
-    await rSet(`session:${token}`, role, TOKEN_TTL_SEC);
+    try { await rSet(`session:${token}`, role, TOKEN_TTL_SEC); }
+    catch { memSet(token, role); } // Redis 불가 시 인메모리 저장
 
     setCookie(res, token, TOKEN_TTL_SEC);
     return res.status(200).json({ ok: true, role });
@@ -111,7 +129,9 @@ module.exports = async (req, res) => {
     const { chaeum_tok: token } = parseCookie(req.headers.cookie);
     if (!token) return res.status(401).json({ ok: false });
 
-    const role = await rGet(`session:${token}`);
+    let role = null;
+    try { role = await rGet(`session:${token}`); } catch {}
+    if (!role) role = memGet(token);
     if (!role) return res.status(401).json({ ok: false });
 
     return res.status(200).json({ ok: true, role });
@@ -120,7 +140,11 @@ module.exports = async (req, res) => {
   // ── 비밀번호 변경 ────────────────────────────────────────────
   if (action === 'change-pw' && req.method === 'POST') {
     const { chaeum_tok: token } = parseCookie(req.headers.cookie);
-    const role = token ? await rGet(`session:${token}`) : null;
+    let role = null;
+    if (token) {
+      try { role = await rGet(`session:${token}`); } catch {}
+      if (!role) role = memGet(token);
+    }
     if (role !== 'admin') return res.status(403).json({ ok: false });
 
     const { currentPw = '', newAdminPw = '', newViewerPw = '' } = req.body || {};
@@ -139,7 +163,10 @@ module.exports = async (req, res) => {
   // ── 로그아웃 ─────────────────────────────────────────────────
   if (action === 'logout' && req.method === 'POST') {
     const { chaeum_tok: token } = parseCookie(req.headers.cookie);
-    if (token) await rDel(`session:${token}`);
+    if (token) {
+      try { await rDel(`session:${token}`); } catch {}
+      _memSessions.delete(token);
+    }
     setCookie(res, '', 0);
     return res.status(200).json({ ok: true });
   }
