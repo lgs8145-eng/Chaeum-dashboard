@@ -12,10 +12,14 @@ const crypto = require('crypto');
 
 const TOKEN_TTL_SEC = 8 * 3600; // 8시간
 
-// Redis 연결 미설정 시 fallback — Chaeum@2026! / viewer2026
+// 버전을 올리면 Redis 저장값을 무시하고 DEFAULT_HASHES로 강제 초기화
+const PW_VERSION = 2;
+
+// 기본 로그인 정보 — admin: hecto2026!@  /  viewer: hecto2026#$
 const DEFAULT_HASHES = {
-  adminHash:  '70ecabc98a0b43d617b2d9bf0669318ab144f72d7fe8a40df83f59df2bf6f893',
-  viewerHash: '35cbe0aaf4e558ac53847cf7b057f4a3a86a427e08935bffdf81d7b4ed7cd9f3',
+  v:          PW_VERSION,
+  adminHash:  'b6af9b5f7472db26402d990986e2a728bd8ebc61ecce1437dbfbec5f65c973ea',
+  viewerHash: 'b2da987f752314f2a1e430f154a33cfc1c8a75f3d3df512dc194b9fb43d09b9d',
 };
 
 // Redis 불가 시 인메모리 세션 fallback (콜드 스타트 시 초기화되나 저트래픽 환경에서 허용)
@@ -93,7 +97,12 @@ function setCookie(res, value, maxAge) {
 async function getHashes() {
   try {
     const stored = await rGet('chaeum_pw');
-    return stored || DEFAULT_HASHES;
+    // 버전 불일치(구버전 또는 미설정) → DEFAULT_HASHES로 덮어쓰고 반환
+    if (!stored || stored.v !== PW_VERSION) {
+      try { await rSet('chaeum_pw', DEFAULT_HASHES); } catch {}
+      return DEFAULT_HASHES;
+    }
+    return stored;
   } catch { return DEFAULT_HASHES; }
 }
 
@@ -154,6 +163,7 @@ module.exports = async (req, res) => {
       return res.status(400).json({ ok: false, reason: 'wrong_current' });
 
     await rSet('chaeum_pw', {
+      v:          PW_VERSION,
       adminHash:  newAdminPw  ? sha256(newAdminPw)  : hashes.adminHash,
       viewerHash: newViewerPw ? sha256(newViewerPw) : hashes.viewerHash,
     });
