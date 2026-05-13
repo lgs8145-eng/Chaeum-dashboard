@@ -394,18 +394,19 @@ function makeWeekLabel(startIso) {
 function getMealType(str) {
   const s = String(str).trim();
   if (/조식|아침|모닝|^M$|^B조/i.test(s)) return 'breakfast';
-  if (/중식.*A|A.*코스|L-A|LA식|중A|A코|^A$/i.test(s)) return 'lunchA';
-  if (/중식.*B|B.*코스|L-B|LB식|중B|B코|^B$/i.test(s)) return 'lunchB';
-  if (/석식|저녁|^D$|D식|만찬/i.test(s)) return 'dinner';
+  // lunchB 먼저 체크 (중식B가 lunchA 패턴에 잡히는 오류 방지)
+  if (/중식.*B|B.*코스|L-?B|LB식|중B|B코|점심.*B|^B$/i.test(s)) return 'lunchB';
+  if (/중식.*A|A.*코스|L-?A|LA식|중A|A코|점심.*A|^A$|중식|점심/i.test(s)) return 'lunchA';
+  if (/석식|저녁|^D$|D식|만찬|dinner/i.test(s)) return 'dinner';
   return null;
 }
 
 function splitMenuItems(str) {
   if (!str && str !== 0) return [];
   return String(str)
-    .split(/[,，\/\n\r]+/)
+    .split(/[,，\/·\n\r]+/)
     .map(s => s.trim())
-    .filter(s => s.length > 0 && s.length < 50);
+    .filter(s => s.length > 0 && s.length < 50 && !/^\d+$/.test(s));
 }
 
 function excelSerialToISO(serial, refYear) {
@@ -425,58 +426,131 @@ function cellToISO(c, refYear) {
   }
   if (typeof c.v === 'number') return excelSerialToISO(c.v, refYear);
   const s = String(c.v || '').trim();
-  // "2026-04-07" or "2026/04/07"
   let m = s.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
   if (m) return toIso(+m[1], +m[2], +m[3]);
-  // "4/7" or "4월7일" with refYear inferred
   m = s.match(/^(\d{1,2})[\/월](\d{1,2})/);
   if (m && refYear) return toIso(refYear, +m[1], +m[2]);
   return null;
 }
 
+// 시트 전체에서 "5/12(월)" 또는 "2026-05-12" 형태의 날짜 찾아 첫 번째 반환
+function findWeekReference(ws, range, refYear) {
+  for (let r = 0; r <= Math.min(range.e.r, 20); r++) {
+    for (let c = 0; c <= Math.min(range.e.c, 10); c++) {
+      const cell = ws[XLSX.utils.encode_cell({r, c})];
+      if (!cell) continue;
+      const iso = cellToISO(cell, refYear);
+      if (iso) return iso;
+    }
+  }
+  return null;
+}
+
+const DAY_NAMES = ['월', '화', '수', '목', '금', '토', '일'];
+
+// "월요일", "화", "(화)", "화요일" → 0~6 (월=0), 없으면 -1
+function getDayIndex(str) {
+  const s = String(str).replace(/[()（）요일\s]/g, '');
+  return DAY_NAMES.indexOf(s);
+}
+
 function parseGridFormat(ws, range, refYear) {
-  // Detect header row (has date values in cols B+)
-  // Col A = meal type labels, Cols B-F = days
   const days = {};
   let headerRow = -1;
-  for (let r = 0; r <= 5; r++) {
-    const a = ws[XLSX.utils.encode_cell({r, c:0})];
+  const merges = ws['!merges'] || [];
+
+  // 병합 셀 고려: (r,c)가 비어있으면 속한 병합 범위의 최상단 좌측 셀 값을 반환
+  function effectiveCell(r, c) {
+    const direct = ws[XLSX.utils.encode_cell({r, c})];
+    if (direct) return direct;
+    for (const mg of merges) {
+      if (r >= mg.s.r && r <= mg.e.r && c >= mg.s.c && c <= mg.e.c) {
+        return ws[XLSX.utils.encode_cell({r: mg.s.r, c: mg.s.c})];
+      }
+    }
+    return null;
+  }
+
+  const maxCol = Math.min(range.e.c, 10);
+
+  // 행 0~15 까지 식사 구분 행 탐색 (타이틀/부제목 행 건너뜀)
+  for (let r = 0; r <= Math.min(range.e.r, 15); r++) {
+    const a = effectiveCell(r, 0);
     if (!a) continue;
     const mt = getMealType(a.v);
     if (!mt) continue;
-    // This row is a data row; header is row above or same row date cols
-    // scan cols for dates
-    for (let ci = 1; ci <= 7; ci++) {
-      const dc = ws[XLSX.utils.encode_cell({r: Math.max(0, r-1), c:ci})];
-      const iso = dc ? cellToISO(dc, refYear) : null;
-      if (iso) { headerRow = r - 1; break; }
+
+    // 최대 3행 위까지 날짜 헤더 탐색
+    for (let up = 1; up <= 3; up++) {
+      const hr = r - up;
+      if (hr < 0) break;
+      let found = false;
+      for (let ci = 1; ci <= maxCol; ci++) {
+        const dc = effectiveCell(hr, ci);
+        if (dc && cellToISO(dc, refYear)) { found = true; break; }
+      }
+      if (found) { headerRow = hr; break; }
     }
-    break;
+    // 날짜 없으면 요일명 헤더 탐색
+    if (headerRow < 0) {
+      for (let up = 1; up <= 3; up++) {
+        const hr = r - up;
+        if (hr < 0) break;
+        let found = false;
+        for (let ci = 1; ci <= maxCol; ci++) {
+          const dc = effectiveCell(hr, ci);
+          if (dc && getDayIndex(String(dc.v || '')) >= 0) { found = true; break; }
+        }
+        if (found) { headerRow = hr; break; }
+      }
+    }
+    if (headerRow >= 0) break;
   }
 
-  // Extract date columns from header row
+  if (headerRow < 0) return null;
+
+  // 헤더 행에서 열→날짜 매핑 구성 (병합 셀 포함)
   const colDate = {};
-  if (headerRow >= 0) {
-    for (let ci = 1; ci <= 10; ci++) {
-      const dc = ws[XLSX.utils.encode_cell({r: headerRow, c:ci})];
-      const iso = dc ? cellToISO(dc, refYear) : null;
-      if (iso) colDate[ci] = iso;
+  const refIso = findWeekReference(ws, range, refYear);
+
+  for (let ci = 1; ci <= maxCol; ci++) {
+    const dc = effectiveCell(headerRow, ci);
+    if (!dc) continue;
+    const iso = cellToISO(dc, refYear);
+    if (iso) {
+      colDate[ci] = iso;
+    } else {
+      const di = getDayIndex(String(dc.v || ''));
+      if (di >= 0 && refIso) {
+        colDate[ci] = addDays(getMondayOf(refIso), di);
+      }
     }
   }
   if (!Object.keys(colDate).length) return null;
 
-  // Parse data rows
+  // 데이터 행 파싱 — 병합된 식사 구분 셀은 currentMt 로 이어받음
+  let currentMt = null;
   for (let r = headerRow + 1; r <= range.e.r; r++) {
-    const ac = ws[XLSX.utils.encode_cell({r, c:0})];
-    if (!ac) continue;
-    const mt = getMealType(ac.v);
-    if (!mt) continue;
+    const ac = effectiveCell(r, 0);
+    const rawVal = ac ? String(ac.v || '').trim() : '';
+    const detectedMt = rawVal ? getMealType(rawVal) : null;
+
+    if (detectedMt) {
+      currentMt = detectedMt;
+    } else if (rawVal && !detectedMt) {
+      // 식사 구분이 아닌 텍스트(소계, 합계 등) → 초기화
+      currentMt = null;
+    }
+    // rawVal === '' : 병합 빈 칸 → currentMt 유지
+
+    if (!currentMt) continue;
+
     for (const [ci, iso] of Object.entries(colDate)) {
       const mc = ws[XLSX.utils.encode_cell({r, c:+ci})];
       const items = splitMenuItems(mc ? mc.v : '');
       if (!items.length) continue;
       if (!days[iso]) days[iso] = { date:iso, dayLabel:isoToKorean(iso), breakfast:[], lunchA:[], lunchB:[], dinner:[] };
-      days[iso][mt].push(...items);
+      days[iso][currentMt].push(...items);
     }
   }
   return Object.keys(days).length ? days : null;
@@ -487,11 +561,14 @@ function parseColumnarFormat(ws, range, refYear) {
   const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false });
   if (!rows.length) return null;
 
-  // Detect header row (contains 날짜/구분/메뉴 or similar)
+  // 헤더 행 건너뜀 (날짜/구분/메뉴 포함 행)
   let startRow = 0;
-  const h = rows[0].map(v => String(v||'').trim().toLowerCase());
-  if (h.some(v => /날짜|date/i.test(v))) startRow = 1;
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    const h = rows[i].map(v => String(v||'').trim());
+    if (h.some(v => /날짜|date|구분|메뉴/i.test(v))) { startRow = i + 1; break; }
+  }
 
+  let lastIso = null;
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
     if (!row[0] && !row[1]) continue;
@@ -501,20 +578,21 @@ function parseColumnarFormat(ws, range, refYear) {
     if (!typeRaw) continue;
     const mt = getMealType(typeRaw);
     if (!mt) continue;
+
     let iso = null;
     if (dateRaw) {
-      const m = String(dateRaw).match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+      const s = String(dateRaw);
+      let m = s.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
       if (m) iso = toIso(+m[1], +m[2], +m[3]);
       else {
-        const m2 = String(dateRaw).match(/(\d{1,2})[\/월](\d{1,2})/);
-        if (m2 && refYear) iso = toIso(refYear, +m2[1], +m2[2]);
+        m = s.match(/(\d{1,2})[\/월](\d{1,2})/);
+        if (m && refYear) iso = toIso(refYear, +m[1], +m[2]);
       }
     }
-    if (!iso) {
-      // reuse previous date
-      const prev = Object.keys(days).pop();
-      if (prev) iso = prev; else continue;
-    }
+    if (!iso) iso = lastIso;
+    if (!iso) continue;
+    lastIso = iso;
+
     const items = splitMenuItems(menuRaw);
     if (!items.length) continue;
     if (!days[iso]) days[iso] = { date:iso, dayLabel:isoToKorean(iso), breakfast:[], lunchA:[], lunchB:[], dinner:[] };
@@ -523,17 +601,11 @@ function parseColumnarFormat(ws, range, refYear) {
   return Object.keys(days).length ? days : null;
 }
 
-function parseMenuExcel(arrayBuffer) {
-  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type:'array', cellDates:true });
-  if (!wb.SheetNames.length) throw new Error('시트가 없습니다.');
-  const ws = wb.Sheets[wb.SheetNames[0]];
+function parseSheetWeek(ws, refYear) {
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-  const refYear = new Date().getFullYear();
-
-  // Try grid format first (most common in Korean cafeterias)
   let days = parseGridFormat(ws, range, refYear);
   if (!days) days = parseColumnarFormat(ws, range, refYear);
-  if (!days || !Object.keys(days).length) throw new Error('메뉴 데이터를 인식하지 못했습니다. 형식을 확인해주세요.');
+  if (!days || !Object.keys(days).length) return null;
 
   const dates = Object.keys(days).sort();
   const weekStart = getMondayOf(dates[0]);
@@ -549,6 +621,38 @@ function parseMenuExcel(arrayBuffer) {
       days: dates.map(d => days[d])
     }
   };
+}
+
+// 모든 시트를 파싱해 주차별 결과 배열 반환
+function parseMenuExcel(arrayBuffer) {
+  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type:'array', cellDates:true });
+  if (!wb.SheetNames.length) throw new Error('시트가 없습니다.');
+
+  const refYear = new Date().getFullYear();
+  const results = [];
+  const failed = [];
+
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws || !ws['!ref']) { failed.push(sheetName); continue; }
+    try {
+      const result = parseSheetWeek(ws, refYear);
+      if (result) results.push({ ...result, sheetName });
+      else failed.push(sheetName);
+    } catch {
+      failed.push(sheetName);
+    }
+  }
+
+  if (!results.length) {
+    throw new Error(
+      '메뉴 데이터를 인식하지 못했습니다.\n' +
+      '지원 형식: ① 격자형(1열=식사구분, 1행=날짜/요일) ② 세로형(날짜|구분|메뉴 열 순서)\n' +
+      '식사 구분 예: 조식·중식A·중식B·석식'
+    );
+  }
+
+  return { results, failedSheets: failed };
 }
 
 /* ══════════════════════════════════════════════════
@@ -1162,10 +1266,22 @@ function handleXlsxUpload(e) {
   const reader = new FileReader();
   reader.onload = (ev) => {
     try {
-      const { weekKey, weekData } = parseMenuExcel(ev.target.result);
-      saveMenuWeek(weekKey, weekData);
-      showResult('success', `${weekData.label} 식단표가 업로드되었습니다. (${(weekData.days||[]).length}일 · 메뉴 ${
-        (weekData.days||[]).reduce((s,d)=>s+(d.breakfast||[]).length+(d.lunchA||[]).length+(d.lunchB||[]).length+(d.dinner||[]).length,0)}건)`);
+      const { results, failedSheets } = parseMenuExcel(ev.target.result);
+
+      let totalDays = 0, totalMenus = 0;
+      for (const { weekKey, weekData } of results) {
+        saveMenuWeek(weekKey, weekData);
+        totalDays  += (weekData.days || []).length;
+        totalMenus += (weekData.days || []).reduce(
+          (s, d) => s + (d.breakfast||[]).length + (d.lunchA||[]).length + (d.lunchB||[]).length + (d.dinner||[]).length, 0
+        );
+      }
+
+      const weekLabels = results.map(r => r.weekData.label).join(', ');
+      let msg = `${results.length}주차 식단표 업로드 완료 (${totalDays}일 · 메뉴 ${totalMenus}건)\n${weekLabels}`;
+      if (failedSheets.length) msg += `\n인식 실패 시트: ${failedSheets.join(', ')}`;
+
+      showResult('success', msg);
       renderWeekList();
       renderAnalysis();
     } catch(err) {
