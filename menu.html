@@ -1186,26 +1186,29 @@ function showResult(type, msg) {
    이미지 업로드 — 클라이언트 압축 → API 분석 → 수동입력 모달 자동완성
 ══════════════════════════════════════════════════ */
 
-// Canvas API로 이미지를 최대 1200px로 리사이즈 후 base64 반환
+// FileReader → data: URL (CSP img-src 허용) → Canvas 리사이즈 → base64 반환
 function compressImageToBase64(file, maxPx = 1200, quality = 0.85) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const ratio = Math.min(maxPx / img.width, maxPx / img.height, 1);
-      const w = Math.round(img.width * ratio);
-      const h = Math.round(img.height * ratio);
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      // 항상 JPEG로 출력 (파일 크기 최소화)
-      const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
-      resolve(base64);
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('파일 읽기 실패'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('이미지 변환 실패'));
+      img.onload = () => {
+        const ratio = Math.min(maxPx / img.width, maxPx / img.height, 1);
+        const w = Math.round(img.width * ratio);
+        const h = Math.round(img.height * ratio);
+        const canvas = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        // 항상 JPEG로 출력 (파일 크기 최소화)
+        const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
+        resolve(base64);
+      };
+      img.src = e.target.result; // data: URL — CSP img-src에서 허용됨
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지 로드 실패')); };
-    img.src = url;
+    reader.readAsDataURL(file);
   });
 }
 
