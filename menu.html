@@ -200,7 +200,9 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
   </div>
   <div class="header-actions">
     <button class="btn btn-outline" onclick="showManualModal()">✏️ 직접 입력</button>
-    <button class="btn btn-primary" onclick="document.getElementById('xlsxInput').click()">📤 식단표 업로드</button>
+    <button class="btn btn-ghost" onclick="document.getElementById('imgInput').click()">📷 이미지로 업로드</button>
+    <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="handleImageUpload(event)">
+    <button class="btn btn-primary" onclick="document.getElementById('xlsxInput').click()">📤 Excel 업로드</button>
     <input type="file" id="xlsxInput" accept=".xlsx,.xls" style="display:none" onchange="handleXlsxUpload(event)">
   </div>
 </div>
@@ -217,9 +219,9 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 
     <div style="margin-bottom:14px">
       <div style="font-size:12.5px;color:var(--muted);background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px 14px;line-height:1.7">
-        <strong style="color:var(--ink)">📊 Excel 식단표 형식 안내</strong><br>
-        <strong>그리드 형식</strong> — A열: 구분(조식/중식A/중식B/석식), B열~F열: 월~금 날짜별 메뉴 (쉼표·줄바꿈·슬래시 구분)<br>
-        <strong>목록 형식</strong> — A열: 날짜, B열: 구분, C열: 메뉴항목 (1행: 헤더)
+        <strong style="color:var(--ink)">📷 이미지 업로드</strong> — 식단표 사진·스캔 이미지를 AI가 자동 인식. 결과를 수정한 후 저장.<br>
+        <strong style="color:var(--ink)">📊 Excel 업로드</strong> — 그리드 형식(행=구분, 열=날짜) 또는 목록 형식(날짜·구분·메뉴 열) 자동 감지.<br>
+        <strong style="color:var(--ink)">✏️ 직접 입력</strong> — 주차 선택 후 요일별 메뉴 직접 입력.
       </div>
     </div>
 
@@ -242,6 +244,18 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 </div>
 
 </div><!-- /shell -->
+
+<!-- ══ 이미지 분석 로딩 오버레이 ══ -->
+<div class="modal-overlay" id="imgLoadingOverlay" style="z-index:2000">
+  <div style="background:#fff;border-radius:16px;padding:36px 48px;text-align:center;min-width:300px;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+    <div style="font-size:40px;margin-bottom:14px;animation:spin 1.5s linear infinite;display:inline-block">🔍</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:6px" id="imgLoadingTitle">이미지 분석 중...</div>
+    <div style="font-size:13px;color:var(--muted)" id="imgLoadingSub">AI가 식단표를 읽고 있습니다. 잠시만 기다려주세요.</div>
+  </div>
+</div>
+<style>
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+</style>
 
 <!-- ══ 주간 식단 상세 모달 ══ -->
 <div class="modal-overlay" id="detailModal">
@@ -1166,6 +1180,133 @@ function showResult(type, msg) {
   el.className = `upload-result ${type}`;
   el.textContent = msg;
   setTimeout(() => { el.className = 'upload-result'; }, 6000);
+}
+
+/* ══════════════════════════════════════════════════
+   이미지 업로드 — 클라이언트 압축 → API 분석 → 수동입력 모달 자동완성
+══════════════════════════════════════════════════ */
+
+// Canvas API로 이미지를 최대 1200px로 리사이즈 후 base64 반환
+function compressImageToBase64(file, maxPx = 1200, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const ratio = Math.min(maxPx / img.width, maxPx / img.height, 1);
+      const w = Math.round(img.width * ratio);
+      const h = Math.round(img.height * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      // 항상 JPEG로 출력 (파일 크기 최소화)
+      const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
+      resolve(base64);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지 로드 실패')); };
+    img.src = url;
+  });
+}
+
+function showImgLoading(title, sub) {
+  document.getElementById('imgLoadingTitle').textContent = title || '이미지 분석 중...';
+  document.getElementById('imgLoadingSub').textContent   = sub  || 'AI가 식단표를 읽고 있습니다. 잠시만 기다려주세요.';
+  document.getElementById('imgLoadingOverlay').classList.add('show');
+}
+
+function hideImgLoading() {
+  document.getElementById('imgLoadingOverlay').classList.remove('show');
+}
+
+// 이미지 파일 선택 → 압축 → API 호출 → 수동입력 모달 자동완성
+async function handleImageUpload(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  if (!file.type.startsWith('image/')) {
+    showResult('error', '이미지 파일(JPG, PNG, HEIC 등)만 업로드 가능합니다.');
+    return;
+  }
+
+  try {
+    // 1) 클라이언트 압축
+    showImgLoading('이미지 압축 중...', '파일 크기를 최적화하고 있습니다.');
+    const base64 = await compressImageToBase64(file);
+
+    // 2) API 호출
+    showImgLoading('AI 분석 중...', '식단표의 메뉴를 인식하고 있습니다. 약 5~10초 소요됩니다.');
+    const res = await fetch('/api/parse-menu-image', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({ imageBase64: base64, mediaType: 'image/jpeg' }),
+    });
+
+    hideImgLoading();
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `서버 오류 (${res.status})`);
+    }
+
+    const { data } = await res.json();
+
+    // 3) 수동입력 모달에 자동완성 후 표시
+    populateManualModalFromImage(data);
+    showResult('success', `이미지 분석 완료. ${(data.days||[]).length}일 분량의 메뉴를 인식했습니다. 내용을 확인·수정 후 저장하세요.`);
+
+  } catch (err) {
+    hideImgLoading();
+    showResult('error', `이미지 분석 실패: ${err.message}`);
+  }
+}
+
+// 분석 결과를 수동입력 모달에 자동완성
+function populateManualModalFromImage(data) {
+  // 주 시작일 결정: API 결과 weekStart → 없으면 첫 day date → 없으면 이번 주 월요일
+  let weekStart = data.weekStart;
+  if (!weekStart && data.days && data.days[0]?.date) weekStart = getMondayOf(data.days[0].date);
+  if (!weekStart) {
+    const now = new Date();
+    weekStart = getMondayOf(toIso(now.getFullYear(), now.getMonth()+1, now.getDate()));
+  }
+  weekStart = getMondayOf(weekStart); // 항상 월요일로 보정
+
+  // 날짜 → 패널 인덱스 매핑 (월=0 ~ 금=4)
+  const dateToIdx = {};
+  for (let i = 0; i < 5; i++) dateToIdx[addDays(weekStart, i)] = i;
+
+  // 수동입력 모달 초기화
+  document.getElementById('manualWeekStart').value = weekStart;
+  updateManualDayTabs();
+
+  // 각 day의 메뉴를 해당 textarea에 채움
+  for (const day of (data.days || [])) {
+    let idx = -1;
+    if (day.date) {
+      idx = dateToIdx[day.date];
+      // date가 없거나 못 찾은 경우, dayLabel로 요일 추정
+      if (idx === undefined || idx === null) idx = -1;
+    }
+    if (idx === undefined || idx < 0) {
+      // dayLabel에서 요일 추출 시도 (월=0, 화=1, ...)
+      const dayNames = ['월','화','수','목','금'];
+      for (let i = 0; i < dayNames.length; i++) {
+        if (day.dayLabel && day.dayLabel.includes(dayNames[i])) { idx = i; break; }
+      }
+    }
+    if (idx < 0 || idx > 4) continue;
+
+    for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+      const ta = document.getElementById(`manual_${mt}_${idx}`);
+      if (ta && day[mt] && day[mt].length) ta.value = day[mt].join(', ');
+    }
+  }
+
+  // 모달 표시
+  document.getElementById('manualModal').classList.add('show');
 }
 
 /* ══════════════════════════════════════════════════
