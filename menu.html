@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>식단 분석 — 채움 운영 대시보드</title>
+<script src="auth.js"></script>
+<script>
+(async function(){
+  const s = await authGetSession();
+  if (!s) { window.location.replace('login.html'); return; }
+  document.documentElement.style.visibility = 'visible';
+})();
+</script>
+<style>html{visibility:hidden}</style>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="data.js"></script>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;
+  --primary:#2563eb;--good:#16a34a;--bad:#dc2626;--warn:#d97706}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+  background:var(--bg);color:var(--ink);line-height:1.45}
+.shell{max-width:1280px;margin:0 auto;padding:24px 20px 60px}
+
+/* Header */
+.header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+.header-left{display:flex;align-items:center;gap:14px}
+.back-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;
+  font-size:13px;font-weight:500;color:var(--muted);background:#fff;border:1px solid var(--line);
+  cursor:pointer;text-decoration:none;transition:all .15s}
+.back-btn:hover{background:#f1f5f9;color:var(--ink)}
+.title{font-size:21px;font-weight:700;letter-spacing:-.3px}
+.subtitle{color:var(--muted);font-size:13px;margin-top:3px}
+.header-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;
+  font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;font-family:inherit}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:#1d4ed8}
+.btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary)}.btn-outline:hover{background:#eff6ff}
+.btn-ghost{background:#f1f5f9;color:var(--muted);border:1px solid var(--line)}.btn-ghost:hover{background:#e2e8f0}
+.btn-danger{background:#fff;color:var(--bad);border:1px solid #fecaca}.btn-danger:hover{background:#fef2f2}
+.btn-sm{padding:4px 10px;font-size:12px}
+
+/* Section */
+.section-label{font-size:15px;font-weight:700;color:var(--ink);margin:24px 0 12px;
+  padding:10px 16px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--primary);
+  border-radius:0 8px 8px 0}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.card h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.card .desc{color:var(--muted);font-size:12px;margin-bottom:12px}
+.row{display:grid;gap:14px;margin-bottom:14px}
+.cols-1{grid-template-columns:1fr}
+.cols-2{grid-template-columns:1.2fr 1fr}
+.cols-3{grid-template-columns:1fr 1fr 1fr}
+
+/* Upload */
+.drop-zone{border:2px dashed #bfdbfe;background:#f0f9ff;border-radius:12px;
+  padding:36px 24px;text-align:center;cursor:pointer;transition:all .2s}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--primary);background:#dbeafe}
+.drop-zone .icon{font-size:38px;margin-bottom:8px}
+.drop-zone .main-text{font-size:15px;font-weight:600;color:#1e40af;margin-bottom:4px}
+.drop-zone .sub-text{font-size:12.5px;color:var(--muted)}
+.upload-result{display:none;border-radius:10px;padding:12px 16px;margin-top:12px;font-size:13px}
+.upload-result.success{background:#dcfce7;border:1px solid #86efac;color:#166534;display:block}
+.upload-result.error{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;display:block}
+.upload-result.info{background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;display:block}
+
+/* Week list */
+.week-item{display:flex;justify-content:space-between;align-items:center;
+  padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:13px;
+  border:1px solid var(--line);cursor:pointer;transition:background .15s}
+.week-item:hover{background:#eff6ff}
+.week-item-right{display:flex;align-items:center;gap:8px}
+.badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+.badge-blue{background:#dbeafe;color:#1d4ed8}
+.badge-green{background:#dcfce7;color:#166534}
+.badge-warn{background:#fef3c7;color:#92400e}
+.badge-red{background:#fee2e2;color:#991b1b}
+
+/* Tabs */
+.tab-bar{display:flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:10px;margin-bottom:16px;flex-wrap:wrap}
+.tab-item{flex:1;min-width:100px;padding:8px 10px;border-radius:7px;font-size:13px;font-weight:500;
+  color:var(--muted);cursor:pointer;border:none;background:transparent;transition:all .15s;
+  font-family:inherit;text-align:center}
+.tab-item:hover{background:rgba(255,255,255,.6);color:var(--ink)}
+.tab-item.active{background:#fff;color:var(--ink);font-weight:600;
+  box-shadow:0 1px 4px rgba(15,23,42,.1)}
+.tab-content{display:none}.tab-content.active{display:block}
+
+/* Tables */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+th{background:#f8fafc;font-weight:600;color:var(--muted);font-size:11.5px;letter-spacing:.3px;text-transform:uppercase}
+th:first-child,td:first-child{text-align:left}
+tbody tr:hover{background:#f8fafc}
+tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
+
+/* Chart */
+.chart-wrap{position:relative;height:240px}
+.chart-wrap.tall{height:340px}
+.chart-wrap.short{height:160px}
+
+/* Note */
+.note{background:#fef3c7;border-left:3px solid var(--warn);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#78350f;margin-top:10px}
+.note-blue{background:#eff6ff;border-left:3px solid var(--primary);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#1e40af;margin-top:10px}
+.note-green{background:#f0fdf4;border-left:3px solid var(--good);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#166534;margin-top:10px}
+
+/* Feedback items */
+.feedback-item{padding:12px 16px;border-radius:10px;margin-bottom:10px;font-size:13.5px;line-height:1.6}
+.fb-red{background:#fef2f2;border:1px solid #fecaca;border-left:4px solid var(--bad)}
+.fb-warn{background:#fffbeb;border:1px solid #fde68a;border-left:4px solid var(--warn)}
+.fb-blue{background:#eff6ff;border:1px solid #bfdbfe;border-left:4px solid var(--primary)}
+.fb-green{background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid var(--good)}
+.fb-muted{background:#f8fafc;border:1px solid var(--line);border-left:4px solid #94a3b8}
+.fb-title{font-weight:700;margin-bottom:4px}
+
+/* Preference bar */
+.pref-bar-wrap{display:flex;align-items:center;gap:10px;margin:3px 0}
+.pref-bar-bg{flex:1;background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden}
+.pref-bar-fill{height:8px;border-radius:4px;transition:width .4s}
+
+/* KPI mini */
+.kpi-mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.kpi-mini{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi-mini .lbl{font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:500}
+.kpi-mini .val{font-size:20px;font-weight:700}
+.kpi-mini .unit{font-size:12px;color:var(--muted);margin-left:2px}
+
+/* Empty state */
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-state .icon{font-size:40px;margin-bottom:10px}
+.empty-state p{font-size:14px;margin:0}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;
+  align-items:center;justify-content:center;z-index:1000;padding:20px;backdrop-filter:blur(4px)}
+.modal-overlay.show{display:flex}
+.modal{background:#fff;border-radius:14px;width:100%;max-height:92vh;overflow-y:auto;
+  box-shadow:0 20px 50px rgba(0,0,0,.25);animation:slideUp .2s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.modal-header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;
+  justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:5;
+  border-radius:14px 14px 0 0}
+.modal-header h2{margin:0;font-size:17px;font-weight:700}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);
+  width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.modal-close:hover{background:#f1f5f9}
+.modal-body{padding:18px 22px}
+.modal-footer{padding:14px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;background:#f8fafc;border-radius:0 0 14px 14px}
+
+/* Manual entry */
+.day-tabs{display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap}
+.day-tab{padding:6px 12px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;
+  border:1px solid var(--line);background:#f8fafc;color:var(--muted);font-family:inherit;transition:all .15s}
+.day-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.day-panel{display:none}.day-panel.active{display:block}
+.menu-field{margin-bottom:12px}
+.menu-field label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;
+  color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px}
+.meal-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot-breakfast{background:#f59e0b}
+.dot-lunchA{background:#3b82f6}
+.dot-lunchB{background:#8b5cf6}
+.dot-dinner{background:#10b981}
+.menu-field textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;
+  font-size:13px;font-family:inherit;resize:vertical;min-height:60px;outline:none;
+  transition:border-color .15s,box-shadow .15s;line-height:1.5}
+.menu-field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.menu-field .hint{font-size:11.5px;color:var(--muted);margin-top:3px}
+.week-input-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.week-input-row label{font-size:13px;font-weight:600;white-space:nowrap}
+.week-input-row input[type=date]{padding:7px 10px;border:1px solid var(--line);border-radius:8px;
+  font-size:13px;font-family:inherit;outline:none;transition:border-color .15s}
+.week-input-row input[type=date]:focus{border-color:var(--primary)}
+
+@media(max-width:900px){
+  .cols-2,.cols-3{grid-template-columns:1fr}
+  .kpi-mini-grid{grid-template-columns:repeat(2,1fr)}
+  .header{flex-direction:column;align-items:flex-start}
+}
+@media(max-width:560px){.kpi-mini-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <a class="back-btn" href="index.html">← 대시보드</a>
+    <div>
+      <div class="title">🗓 주간 식단 관리 &amp; 분석</div>
+      <div class="subtitle" id="headerSub">식단표 업로드 후 메뉴 선호도·중복 검토 결과를 확인합니다</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-outline" onclick="showManualModal()">✏️ 직접 입력</button>
+    <button class="btn btn-primary" onclick="document.getElementById('xlsxInput').click()">📤 식단표 업로드</button>
+    <input type="file" id="xlsxInput" accept=".xlsx,.xls" style="display:none" onchange="handleXlsxUpload(event)">
+  </div>
+</div>
+
+<!-- Upload result toast -->
+<div class="upload-result" id="uploadResult"></div>
+
+<!-- ══ 등록된 식단 ══ -->
+<div class="section-label">📋 등록된 주간 식단표</div>
+<div class="row cols-1">
+  <div class="card">
+    <h3>주차별 식단 목록</h3>
+    <div class="desc">식단표를 클릭하면 상세 내용을 확인할 수 있습니다.</div>
+
+    <div style="margin-bottom:14px">
+      <div style="font-size:12.5px;color:var(--muted);background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px 14px;line-height:1.7">
+        <strong style="color:var(--ink)">📊 Excel 식단표 형식 안내</strong><br>
+        <strong>그리드 형식</strong> — A열: 구분(조식/중식A/중식B/석식), B열~F열: 월~금 날짜별 메뉴 (쉼표·줄바꿈·슬래시 구분)<br>
+        <strong>목록 형식</strong> — A열: 날짜, B열: 구분, C열: 메뉴항목 (1행: 헤더)
+      </div>
+    </div>
+
+    <div id="weekListContainer">
+      <div class="empty-state" id="weekEmptyState">
+        <div class="icon">📂</div>
+        <p>등록된 식단표가 없습니다.<br>엑셀 파일을 업로드하거나 직접 입력해주세요.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 분석 ══ -->
+<div class="section-label" id="analysisLabel">📊 식단 분석</div>
+<div id="analysisSection">
+  <div class="empty-state" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:50px 20px">
+    <div class="icon">📈</div>
+    <p>식단표를 등록하면 분석 결과가 표시됩니다.</p>
+  </div>
+</div>
+
+</div><!-- /shell -->
+
+<!-- ══ 주간 식단 상세 모달 ══ -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <h2 id="detailModalTitle">식단 상세</h2>
+      <button class="modal-close" onclick="closeDetailModal()">×</button>
+    </div>
+    <div class="modal-body" id="detailModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" id="detailDeleteBtn">🗑 삭제</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeDetailModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 직접 입력 모달 ══ -->
+<div class="modal-overlay" id="manualModal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <h2>✏️ 주간 식단 직접 입력</h2>
+      <button class="modal-close" onclick="closeManualModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="week-input-row">
+        <label>주 시작일 (월요일)</label>
+        <input type="date" id="manualWeekStart" onchange="updateManualDayTabs()">
+        <span style="font-size:12px;color:var(--muted)" id="manualWeekRange"></span>
+      </div>
+
+      <div class="day-tabs" id="manualDayTabs">
+        <button class="day-tab active" onclick="switchDayTab(0,this)">월</button>
+        <button class="day-tab" onclick="switchDayTab(1,this)">화</button>
+        <button class="day-tab" onclick="switchDayTab(2,this)">수</button>
+        <button class="day-tab" onclick="switchDayTab(3,this)">목</button>
+        <button class="day-tab" onclick="switchDayTab(4,this)">금</button>
+      </div>
+
+      <!-- 5 day panels -->
+      <div id="manualDayPanels">
+        <!-- generated by JS -->
+      </div>
+
+      <div class="note-blue" style="margin-top:10px">메뉴는 쉼표(,)로 구분해서 입력하세요. 예: 밥, 된장국, 제육볶음, 깍두기</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeManualModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveManualEntry()">저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════
+   상수 & 스토리지
+══════════════════════════════════════════════════ */
+const MENU_KEY   = 'chaeum_menus_v1';
+const UPLOAD_KEY = 'chaeum_uploads_v1';
+const DAYS_KO = ['일','월','화','수','목','금','토'];
+const MEAL_LABELS = { breakfast:'조식', lunchA:'중식 A', lunchB:'중식 B', dinner:'석식' };
+const MEAL_COLORS = { breakfast:'#f59e0b', lunchA:'#3b82f6', lunchB:'#8b5cf6', dinner:'#10b981' };
+
+function loadMenus() {
+  try { return JSON.parse(localStorage.getItem(MENU_KEY) || '{}'); } catch { return {}; }
+}
+
+function saveMenuWeek(weekKey, data) {
+  const all = loadMenus();
+  all[weekKey] = data;
+  localStorage.setItem(MENU_KEY, JSON.stringify(all));
+}
+
+function deleteMenuWeek(weekKey) {
+  const all = loadMenus();
+  delete all[weekKey];
+  localStorage.setItem(MENU_KEY, JSON.stringify(all));
+}
+
+function loadAllMealRecords() {
+  let uploaded = {};
+  try { uploaded = JSON.parse(localStorage.getItem(UPLOAD_KEY) || '{}'); } catch {}
+  return { ...CHAEUM_DATA.records, ...uploaded };
+}
+
+/* ══════════════════════════════════════════════════
+   날짜 유틸
+══════════════════════════════════════════════════ */
+function toIso(y, m, d) {
+  return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+
+function getMondayOf(dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1 - day);
+  d.setDate(d.getDate() + diff);
+  return toIso(d.getFullYear(), d.getMonth()+1, d.getDate());
+}
+
+function addDays(isoStr, n) {
+  const d = new Date(isoStr);
+  d.setDate(d.getDate() + n);
+  return toIso(d.getFullYear(), d.getMonth()+1, d.getDate());
+}
+
+function isoToKorean(isoStr) {
+  const d = new Date(isoStr);
+  return `${d.getMonth()+1}/${d.getDate()}(${DAYS_KO[d.getDay()]})`;
+}
+
+function isoToMD(isoStr) {
+  const d = new Date(isoStr);
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+function normDayLabel(str) {
+  return String(str).replace(/\([^)]*\)/,'').trim();
+}
+
+function isoToYearMonth(isoStr) {
+  return isoStr.slice(0, 7);
+}
+
+function makeWeekLabel(startIso) {
+  const d = new Date(startIso);
+  const y = d.getFullYear(), m = d.getMonth()+1;
+  const end = new Date(startIso);
+  end.setDate(end.getDate() + 4);
+  const wn = Math.ceil(d.getDate() / 7);
+  return `${y}년 ${m}월 ${wn}주차 (${m}/${d.getDate()}~${end.getMonth()+1}/${end.getDate()})`;
+}
+
+/* ══════════════════════════════════════════════════
+   Excel 파서
+══════════════════════════════════════════════════ */
+function getMealType(str) {
+  const s = String(str).trim();
+  if (/조식|아침|모닝|^M$|^B조/i.test(s)) return 'breakfast';
+  if (/중식.*A|A.*코스|L-A|LA식|중A|A코|^A$/i.test(s)) return 'lunchA';
+  if (/중식.*B|B.*코스|L-B|LB식|중B|B코|^B$/i.test(s)) return 'lunchB';
+  if (/석식|저녁|^D$|D식|만찬/i.test(s)) return 'dinner';
+  return null;
+}
+
+function splitMenuItems(str) {
+  if (!str && str !== 0) return [];
+  return String(str)
+    .split(/[,，\/\n\r]+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && s.length < 50);
+}
+
+function excelSerialToISO(serial, refYear) {
+  try {
+    const p = XLSX.SSF.parse_date_code(serial);
+    if (p && p.y && p.y > 2000) return toIso(p.y, p.m, p.d);
+    if (p && p.m && refYear) return toIso(refYear, p.m, p.d);
+  } catch {}
+  return null;
+}
+
+function cellToISO(c, refYear) {
+  if (!c) return null;
+  if (c.t === 'd') {
+    const d = c.v;
+    return toIso(d.getFullYear(), d.getMonth()+1, d.getDate());
+  }
+  if (typeof c.v === 'number') return excelSerialToISO(c.v, refYear);
+  const s = String(c.v || '').trim();
+  // "2026-04-07" or "2026/04/07"
+  let m = s.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (m) return toIso(+m[1], +m[2], +m[3]);
+  // "4/7" or "4월7일" with refYear inferred
+  m = s.match(/^(\d{1,2})[\/월](\d{1,2})/);
+  if (m && refYear) return toIso(refYear, +m[1], +m[2]);
+  return null;
+}
+
+function parseGridFormat(ws, range, refYear) {
+  // Detect header row (has date values in cols B+)
+  // Col A = meal type labels, Cols B-F = days
+  const days = {};
+  let headerRow = -1;
+  for (let r = 0; r <= 5; r++) {
+    const a = ws[XLSX.utils.encode_cell({r, c:0})];
+    if (!a) continue;
+    const mt = getMealType(a.v);
+    if (!mt) continue;
+    // This row is a data row; header is row above or same row date cols
+    // scan cols for dates
+    for (let ci = 1; ci <= 7; ci++) {
+      const dc = ws[XLSX.utils.encode_cell({r: Math.max(0, r-1), c:ci})];
+      const iso = dc ? cellToISO(dc, refYear) : null;
+      if (iso) { headerRow = r - 1; break; }
+    }
+    break;
+  }
+
+  // Extract date columns from header row
+  const colDate = {};
+  if (headerRow >= 0) {
+    for (let ci = 1; ci <= 10; ci++) {
+      const dc = ws[XLSX.utils.encode_cell({r: headerRow, c:ci})];
+      const iso = dc ? cellToISO(dc, refYear) : null;
+      if (iso) colDate[ci] = iso;
+    }
+  }
+  if (!Object.keys(colDate).length) return null;
+
+  // Parse data rows
+  for (let r = headerRow + 1; r <= range.e.r; r++) {
+    const ac = ws[XLSX.utils.encode_cell({r, c:0})];
+    if (!ac) continue;
+    const mt = getMealType(ac.v);
+    if (!mt) continue;
+    for (const [ci, iso] of Object.entries(colDate)) {
+      const mc = ws[XLSX.utils.encode_cell({r, c:+ci})];
+      const items = splitMenuItems(mc ? mc.v : '');
+      if (!items.length) continue;
+      if (!days[iso]) days[iso] = { date:iso, dayLabel:isoToKorean(iso), breakfast:[], lunchA:[], lunchB:[], dinner:[] };
+      days[iso][mt].push(...items);
+    }
+  }
+  return Object.keys(days).length ? days : null;
+}
+
+function parseColumnarFormat(ws, range, refYear) {
+  const days = {};
+  const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false });
+  if (!rows.length) return null;
+
+  // Detect header row (contains 날짜/구분/메뉴 or similar)
+  let startRow = 0;
+  const h = rows[0].map(v => String(v||'').trim().toLowerCase());
+  if (h.some(v => /날짜|date/i.test(v))) startRow = 1;
+
+  for (let i = startRow; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row[0] && !row[1]) continue;
+    const dateRaw = row[0];
+    const typeRaw = row[1];
+    const menuRaw = row[2];
+    if (!typeRaw) continue;
+    const mt = getMealType(typeRaw);
+    if (!mt) continue;
+    let iso = null;
+    if (dateRaw) {
+      const m = String(dateRaw).match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+      if (m) iso = toIso(+m[1], +m[2], +m[3]);
+      else {
+        const m2 = String(dateRaw).match(/(\d{1,2})[\/월](\d{1,2})/);
+        if (m2 && refYear) iso = toIso(refYear, +m2[1], +m2[2]);
+      }
+    }
+    if (!iso) {
+      // reuse previous date
+      const prev = Object.keys(days).pop();
+      if (prev) iso = prev; else continue;
+    }
+    const items = splitMenuItems(menuRaw);
+    if (!items.length) continue;
+    if (!days[iso]) days[iso] = { date:iso, dayLabel:isoToKorean(iso), breakfast:[], lunchA:[], lunchB:[], dinner:[] };
+    days[iso][mt].push(...items);
+  }
+  return Object.keys(days).length ? days : null;
+}
+
+function parseMenuExcel(arrayBuffer) {
+  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type:'array', cellDates:true });
+  if (!wb.SheetNames.length) throw new Error('시트가 없습니다.');
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  const refYear = new Date().getFullYear();
+
+  // Try grid format first (most common in Korean cafeterias)
+  let days = parseGridFormat(ws, range, refYear);
+  if (!days) days = parseColumnarFormat(ws, range, refYear);
+  if (!days || !Object.keys(days).length) throw new Error('메뉴 데이터를 인식하지 못했습니다. 형식을 확인해주세요.');
+
+  const dates = Object.keys(days).sort();
+  const weekStart = getMondayOf(dates[0]);
+  const month = isoToYearMonth(weekStart);
+
+  return {
+    weekKey: weekStart,
+    weekData: {
+      label: makeWeekLabel(weekStart),
+      month,
+      weekStart,
+      weekEnd: addDays(weekStart, 4),
+      days: dates.map(d => days[d])
+    }
+  };
+}
+
+/* ══════════════════════════════════════════════════
+   식수 교차 데이터 빌드
+══════════════════════════════════════════════════ */
+function buildDailyMap() {
+  const records = loadAllMealRecords();
+  const map = {}; // "M/D" → { actual, monthKey }
+  const monthAvg = {}; // "YYYY-MM" → avg actual
+
+  for (const [mk, rec] of Object.entries(records)) {
+    if (!rec.daily || !rec.daily.length) continue;
+    const actuals = rec.daily.map(d => d[2]).filter(v => v > 0);
+    if (!actuals.length) continue;
+    monthAvg[mk] = actuals.reduce((a,b)=>a+b,0) / actuals.length;
+    for (const [lbl,,actual] of rec.daily) {
+      const nd = normDayLabel(lbl);
+      map[`${mk}|${nd}`] = { actual, monthKey: mk };
+    }
+  }
+  return { map, monthAvg };
+}
+
+/* ══════════════════════════════════════════════════
+   분석 엔진
+══════════════════════════════════════════════════ */
+function analyzeFrequency(allMenus) {
+  // { mealType → { menuName → count } }
+  const freq = { breakfast:{}, lunchA:{}, lunchB:{}, dinner:{} };
+  for (const wk of Object.values(allMenus)) {
+    for (const day of (wk.days || [])) {
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        for (const item of (day[mt] || [])) {
+          const key = item.trim();
+          if (!key) continue;
+          freq[mt][key] = (freq[mt][key] || 0) + 1;
+        }
+      }
+    }
+  }
+  return freq;
+}
+
+function analyzeDuplicates(allMenus) {
+  // { "YYYY-MM" → { mealType → { menuName → count } } }
+  const dups = {};
+  for (const wk of Object.values(allMenus)) {
+    const month = wk.month;
+    if (!month) continue;
+    if (!dups[month]) dups[month] = { breakfast:{}, lunchA:{}, lunchB:{}, dinner:{} };
+    for (const day of (wk.days || [])) {
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        for (const item of (day[mt] || [])) {
+          const key = item.trim();
+          if (!key) continue;
+          dups[month][mt][key] = (dups[month][mt][key] || 0) + 1;
+        }
+      }
+    }
+  }
+  return dups;
+}
+
+function analyzePreference(allMenus, dailyMap, monthAvg) {
+  // { menuName → { scores: [], mealType } }
+  const scoreMap = {};
+
+  for (const wk of Object.values(allMenus)) {
+    const month = wk.month;
+    for (const day of (wk.days || [])) {
+      const md = isoToMD(day.date);
+      const key = `${month}|${md}`;
+      const entry = dailyMap[key];
+      if (!entry) continue;
+      const avg = monthAvg[month];
+      if (!avg) continue;
+      const score = entry.actual / avg;
+
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        for (const item of (day[mt] || [])) {
+          const nm = item.trim();
+          if (!nm) continue;
+          if (!scoreMap[nm]) scoreMap[nm] = { scores:[], mealType: mt, days:0 };
+          scoreMap[nm].scores.push(score);
+          scoreMap[nm].days++;
+        }
+      }
+    }
+  }
+
+  const result = {};
+  for (const [nm, d] of Object.entries(scoreMap)) {
+    if (d.scores.length < 1) continue;
+    const avg = d.scores.reduce((a,b)=>a+b,0) / d.scores.length;
+    result[nm] = { score: Math.round(avg * 100), count: d.days, mealType: d.mealType };
+  }
+  return result;
+}
+
+function generateFeedback(allMenus, freq, dups, pref) {
+  const items = [];
+
+  // 1. 중복 경보
+  for (const [month, mtMap] of Object.entries(dups)) {
+    const [y,m] = month.split('-');
+    const label = `${y}년 ${+m}월`;
+    for (const [mt, counts] of Object.entries(mtMap)) {
+      const alerts = Object.entries(counts).filter(([,c]) => c >= 3).sort((a,b)=>b[1]-a[1]);
+      const warns  = Object.entries(counts).filter(([,c]) => c === 2);
+      if (alerts.length) {
+        const list = alerts.map(([n,c])=>`<strong>${n}</strong>(${c}회)`).join(', ');
+        items.push({ level:'red', text:`${label} ${MEAL_LABELS[mt]}: ${list} — 3회 이상 중복 제공됩니다. 메뉴 교체를 검토하세요.` });
+      }
+      if (warns.length) {
+        const list = warns.map(([n])=>`<strong>${n}</strong>`).join(', ');
+        items.push({ level:'warn', text:`${label} ${MEAL_LABELS[mt]}: ${list} — 2회 제공됩니다.` });
+      }
+    }
+  }
+
+  // 2. 선호도 피드백
+  if (Object.keys(pref).length >= 3) {
+    const sorted = Object.entries(pref).sort((a,b)=>b[1].score-a[1].score);
+    const top = sorted.filter(([,d])=>d.score >= 105).slice(0, 5);
+    const low = sorted.filter(([,d])=>d.score <= 94).slice(-5);
+
+    if (top.length) {
+      const list = top.map(([n,d])=>`<strong>${n}</strong>(${d.score}%)`).join(', ');
+      items.push({ level:'green', text:`선호 메뉴 TOP: ${list} — 식수가 높은 날에 자주 제공된 메뉴입니다. 지속 편성을 권장합니다.` });
+    }
+    if (low.length) {
+      const list = low.reverse().map(([n,d])=>`<strong>${n}</strong>(${d.score}%)`).join(', ');
+      items.push({ level:'warn', text:`재검토 권장: ${list} — 식수가 낮은 날에 자주 등장한 메뉴입니다.` });
+    }
+  }
+
+  // 3. 구성 통계
+  const totalWeeks = Object.keys(allMenus).length;
+  if (totalWeeks > 0) {
+    let dayCount = 0, menuCounts = { breakfast:0, lunchA:0, lunchB:0, dinner:0 };
+    for (const wk of Object.values(allMenus)) {
+      for (const day of (wk.days || [])) {
+        dayCount++;
+        for (const mt of ['breakfast','lunchA','lunchB','dinner'])
+          menuCounts[mt] += (day[mt]||[]).length;
+      }
+    }
+    if (dayCount > 0) {
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        const avg = (menuCounts[mt] / dayCount).toFixed(1);
+        if (+avg < 3) items.push({ level:'blue', text:`${MEAL_LABELS[mt]} 평균 메뉴 구성 수가 ${avg}개입니다. 다양성 확보를 위해 최소 3~4가지 이상을 권장합니다.` });
+      }
+    }
+    items.push({ level:'muted', text:`총 ${totalWeeks}주차 ${dayCount}일 분량의 식단이 등록되어 있습니다. 분석 정확도 향상을 위해 3개월 이상의 데이터 축적을 권장합니다.` });
+  }
+
+  if (!items.length) items.push({ level:'muted', text:'식단 데이터가 충분하지 않습니다. 더 많은 주차의 식단을 등록하면 상세 피드백이 생성됩니다.' });
+  return items;
+}
+
+/* ══════════════════════════════════════════════════
+   렌더링 — 주차 목록
+══════════════════════════════════════════════════ */
+function renderWeekList() {
+  const all = loadMenus();
+  const keys = Object.keys(all).sort().reverse();
+  const container = document.getElementById('weekListContainer');
+  const empty = document.getElementById('weekEmptyState');
+
+  if (!keys.length) {
+    if (empty) empty.style.display = 'block';
+    // Remove any existing week items
+    [...container.querySelectorAll('.week-item')].forEach(el => el.remove());
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  // Rebuild list
+  [...container.querySelectorAll('.week-item')].forEach(el => el.remove());
+  for (const wk of keys) {
+    const data = all[wk];
+    const totalMenus = (data.days||[]).reduce((s,d)=>
+      s + (d.breakfast||[]).length + (d.lunchA||[]).length + (d.lunchB||[]).length + (d.dinner||[]).length, 0);
+    const hasCross = checkCrossData(data);
+    const el = document.createElement('div');
+    el.className = 'week-item';
+    el.onclick = () => showDetailModal(wk);
+    el.innerHTML = `
+      <div>
+        <div style="font-weight:600">${data.label || makeWeekLabel(wk)}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${(data.days||[]).length}일 · 메뉴 ${totalMenus}건</div>
+      </div>
+      <div class="week-item-right">
+        ${hasCross ? '<span class="badge badge-green">교차분석 가능</span>' : ''}
+        <span class="badge badge-blue">${data.month || ''}</span>
+      </div>`;
+    container.appendChild(el);
+  }
+}
+
+function checkCrossData(wkData) {
+  const records = loadAllMealRecords();
+  const month = wkData.month;
+  return !!(records[month] && records[month].daily && records[month].daily.length);
+}
+
+/* ══════════════════════════════════════════════════
+   렌더링 — 전체 분석
+══════════════════════════════════════════════════ */
+let _freqChart = null;
+let _prefChart = null;
+
+function renderAnalysis() {
+  const allMenus = loadMenus();
+  if (!Object.keys(allMenus).length) {
+    document.getElementById('analysisSection').innerHTML = `
+      <div class="empty-state" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:50px 20px">
+        <div class="icon">📈</div><p>식단표를 등록하면 분석 결과가 표시됩니다.</p>
+      </div>`;
+    return;
+  }
+
+  const freq = analyzeFrequency(allMenus);
+  const dups = analyzeDuplicates(allMenus);
+  const { map: dailyMap, monthAvg } = buildDailyMap();
+  const pref = analyzePreference(allMenus, dailyMap, monthAvg);
+  const feedback = generateFeedback(allMenus, freq, dups, pref);
+  const hasPref = Object.keys(pref).length >= 3;
+
+  // Summary KPIs
+  let totalDays = 0, totalMenuItems = 0, uniqueMenus = new Set();
+  for (const wk of Object.values(allMenus)) {
+    for (const day of (wk.days||[])) {
+      totalDays++;
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        for (const item of (day[mt]||[])) { totalMenuItems++; uniqueMenus.add(item.trim()); }
+      }
+    }
+  }
+
+  const dupCount = Object.values(dups).reduce((s,mtMap)=>
+    s + Object.values(mtMap).reduce((ss,counts)=>
+      ss + Object.values(counts).filter(c=>c>=2).length, 0), 0);
+
+  document.getElementById('analysisSection').innerHTML = `
+    <div class="kpi-mini-grid">
+      <div class="kpi-mini"><div class="lbl">등록 주차</div><div class="val">${Object.keys(allMenus).length}<span class="unit">주</span></div></div>
+      <div class="kpi-mini"><div class="lbl">등록 일수</div><div class="val">${totalDays}<span class="unit">일</span></div></div>
+      <div class="kpi-mini"><div class="lbl">고유 메뉴</div><div class="val">${uniqueMenus.size}<span class="unit">종</span></div></div>
+      <div class="kpi-mini"><div class="lbl">중복 메뉴</div><div class="val" style="color:${dupCount>0?'var(--bad)':'var(--good)'}">
+        ${dupCount}<span class="unit">건</span></div></div>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-item active" onclick="showTab('freq',this)">📊 메뉴 빈도</button>
+      <button class="tab-item" onclick="showTab('dup',this)">🔄 중복 검토</button>
+      <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
+      ${hasPref ? '<button class="tab-item" onclick="showTab(\'pref\',this)">⭐ 선호도 분석</button>' : ''}
+      <button class="tab-item" onclick="showTab('feedback',this)">💡 관리자 피드백</button>
+    </div>
+
+    <div class="tab-content active" id="tab-freq">${buildFreqTab(freq)}</div>
+    <div class="tab-content" id="tab-dup">${buildDupTab(dups)}</div>
+    <div class="tab-content" id="tab-comp">${buildCompTab(allMenus, freq)}</div>
+    ${hasPref ? `<div class="tab-content" id="tab-pref">${buildPrefTab(pref, Object.keys(pref).length)}</div>` : ''}
+    <div class="tab-content" id="tab-feedback">${buildFeedbackTab(feedback)}</div>
+  `;
+
+  renderFreqCharts(freq);
+  if (hasPref) renderPrefChart(pref);
+}
+
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
+  const tc = document.getElementById(`tab-${name}`);
+  if (tc) tc.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+/* ── 빈도 탭 ── */
+function buildFreqTab(freq) {
+  return `
+    <div class="row cols-2">
+      <div class="card">
+        <h3>조식 · 석식 메뉴 빈도 Top 10</h3>
+        <div class="desc">등록된 전체 기간 기준</div>
+        <div class="chart-wrap tall"><canvas id="freqChart1"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>중식 A · B 메뉴 빈도 Top 10</h3>
+        <div class="desc">등록된 전체 기간 기준</div>
+        <div class="chart-wrap tall"><canvas id="freqChart2"></canvas></div>
+      </div>
+    </div>
+    <div class="row cols-2">
+      ${['breakfast','lunchA','lunchB','dinner'].map(mt => {
+        const top = Object.entries(freq[mt]).sort((a,b)=>b[1]-a[1]).slice(0,8);
+        if (!top.length) return '';
+        return `<div class="card">
+          <h3>${MEAL_LABELS[mt]} 상위 메뉴</h3>
+          <table>
+            <thead><tr><th>메뉴</th><th>제공 횟수</th></tr></thead>
+            <tbody>${top.map(([n,c],i)=>`<tr><td>${i+1}. ${n}</td><td><strong>${c}</strong>회</td></tr>`).join('')}</tbody>
+          </table>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function renderFreqCharts(freq) {
+  const c1 = document.getElementById('freqChart1');
+  const c2 = document.getElementById('freqChart2');
+  if (!c1 || !c2) return;
+
+  const mkData = (types) => {
+    const merged = {};
+    for (const mt of types)
+      for (const [n,c] of Object.entries(freq[mt]))
+        merged[n] = (merged[n]||0) + c;
+    const top = Object.entries(merged).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    return { labels: top.map(x=>x[0]), data: top.map(x=>x[1]) };
+  };
+
+  const opts = (color) => ({
+    indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{x:{beginAtZero:true,ticks:{stepSize:1}},y:{ticks:{font:{size:11}}}}
+  });
+
+  const d1 = mkData(['breakfast','dinner']);
+  const d2 = mkData(['lunchA','lunchB']);
+
+  if (_freqChart) { _freqChart.forEach(c=>c.destroy()); _freqChart = []; }
+  _freqChart = [
+    new Chart(c1, { type:'bar', data:{ labels:d1.labels, datasets:[{data:d1.data,backgroundColor:'#f59e0b88',borderColor:'#f59e0b',borderWidth:1,borderRadius:4}]}, options:opts('#f59e0b') }),
+    new Chart(c2, { type:'bar', data:{ labels:d2.labels, datasets:[{data:d2.data,backgroundColor:'#3b82f688',borderColor:'#3b82f6',borderWidth:1,borderRadius:4}]}, options:opts('#3b82f6') }),
+  ];
+}
+
+/* ── 중복 탭 ── */
+function buildDupTab(dups) {
+  const months = Object.keys(dups).sort().reverse();
+  if (!months.length) return '<div class="empty-state"><div class="icon">✅</div><p>중복 메뉴가 없습니다.</p></div>';
+
+  let html = '';
+  for (const month of months) {
+    const [y,m] = month.split('-');
+    const label = `${y}년 ${+m}월`;
+    let hasAny = false;
+    let rows = '';
+    for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+      const entries = Object.entries(dups[month][mt]).filter(([,c])=>c>=2).sort((a,b)=>b[1]-a[1]);
+      for (const [nm,cnt] of entries) {
+        hasAny = true;
+        const badge = cnt >= 3 ? `<span class="badge badge-red">${cnt}회</span>` : `<span class="badge badge-warn">${cnt}회</span>`;
+        rows += `<tr><td>${MEAL_LABELS[mt]}</td><td>${nm}</td><td>${badge}</td></tr>`;
+      }
+    }
+    if (!hasAny) continue;
+    html += `<div class="card" style="margin-bottom:14px">
+      <h3>${label} 중복 메뉴</h3>
+      <div class="desc">같은 달에 2회 이상 제공된 메뉴</div>
+      <table>
+        <thead><tr><th>구분</th><th>메뉴</th><th>제공 횟수</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+  return html || '<div class="note-green">중복 메뉴가 없습니다. 메뉴가 잘 분산되어 있습니다.</div>';
+}
+
+/* ── 구성 분석 탭 ── */
+function buildCompTab(allMenus, freq) {
+  const mealTotals = { breakfast:0, lunchA:0, lunchB:0, dinner:0 };
+  const mealDays   = { breakfast:0, lunchA:0, lunchB:0, dinner:0 };
+  let totalDays = 0;
+
+  for (const wk of Object.values(allMenus)) {
+    for (const day of (wk.days||[])) {
+      totalDays++;
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        const cnt = (day[mt]||[]).length;
+        mealTotals[mt] += cnt;
+        if (cnt > 0) mealDays[mt]++;
+      }
+    }
+  }
+
+  const rows = ['breakfast','lunchA','lunchB','dinner'].map(mt => {
+    const avg = mealDays[mt] ? (mealTotals[mt]/mealDays[mt]).toFixed(1) : '-';
+    const coverage = totalDays ? Math.round(mealDays[mt]/totalDays*100) : 0;
+    const uniq = Object.keys(freq[mt]).length;
+    return `<tr>
+      <td>${MEAL_LABELS[mt]}</td>
+      <td>${mealDays[mt]}일 / ${totalDays}일 (${coverage}%)</td>
+      <td>${avg}</td>
+      <td>${uniq}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="card">
+    <h3>식사 구분별 구성 현황</h3>
+    <div class="desc">등록된 전체 기간 기준</div>
+    <table>
+      <thead><tr><th>구분</th><th>등록일/전체</th><th>평균 메뉴 수</th><th>고유 메뉴 종수</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="note-blue" style="margin-top:12px">평균 메뉴 수 3개 이상, 고유 메뉴 종수가 많을수록 다양한 식단 구성입니다.</div>
+  </div>`;
+}
+
+/* ── 선호도 탭 ── */
+function buildPrefTab(pref, count) {
+  const sorted = Object.entries(pref).sort((a,b)=>b[1].score-a[1].score);
+  const rows = sorted.map(([nm,d]) => {
+    const bar = Math.min(Math.max(d.score - 70, 0), 60);
+    const color = d.score >= 105 ? '#16a34a' : d.score <= 94 ? '#dc2626' : '#64748b';
+    const label = d.score >= 105 ? '선호' : d.score <= 94 ? '재검토' : '보통';
+    return `<tr>
+      <td>${nm}</td>
+      <td>${MEAL_LABELS[d.mealType]}</td>
+      <td>
+        <div class="pref-bar-wrap">
+          <div class="pref-bar-bg"><div class="pref-bar-fill" style="width:${bar/60*100}%;background:${color}"></div></div>
+          <span style="font-weight:700;color:${color};min-width:38px;text-align:right">${d.score}%</span>
+        </div>
+      </td>
+      <td><span class="badge" style="background:${color}22;color:${color}">${label}</span></td>
+      <td>${d.count}일</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="card">
+    <h3>메뉴 선호도 순위</h3>
+    <div class="desc">해당 메뉴 제공일의 실제 식수 ÷ 월 평균 식수 × 100. 100% 초과 = 식수 높은 날에 자주 등장</div>
+    <div class="note" style="margin-bottom:12px">⚠ 식수는 메뉴 외에도 요일·날씨·행사 등 다양한 요인의 영향을 받습니다. 참고 지표로 활용하세요.</div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>메뉴</th><th>구분</th><th>선호도 지수</th><th>평가</th><th>분석일</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="note-blue" style="margin-top:12px">식수 데이터가 등록된 월(${Object.keys(buildDailyMap().monthAvg).join(', ')})과 겹치는 식단에 한해 분석됩니다. 현재 ${count}개 메뉴 분석 완료.</div>
+  </div>`;
+}
+
+/* ── 피드백 탭 ── */
+function buildFeedbackTab(feedback) {
+  const cls = { red:'fb-red', warn:'fb-warn', blue:'fb-blue', green:'fb-green', muted:'fb-muted' };
+  const icon = { red:'🔴', warn:'🟡', blue:'📋', green:'✅', muted:'📊' };
+  return feedback.map(f => `
+    <div class="feedback-item ${cls[f.level]}">
+      ${icon[f.level]} ${f.text}
+    </div>`).join('');
+}
+
+/* ══════════════════════════════════════════════════
+   모달 — 상세 보기
+══════════════════════════════════════════════════ */
+let _detailKey = null;
+
+function showDetailModal(weekKey) {
+  _detailKey = weekKey;
+  const all = loadMenus();
+  const data = all[weekKey];
+  if (!data) return;
+
+  document.getElementById('detailModalTitle').textContent = data.label || makeWeekLabel(weekKey);
+
+  let html = '';
+  for (const day of (data.days||[])) {
+    html += `<div style="margin-bottom:18px;border-bottom:1px solid var(--line);padding-bottom:14px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:8px">${day.dayLabel || day.date}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${['breakfast','lunchA','lunchB','dinner'].map(mt => {
+          const items = (day[mt]||[]);
+          return `<div style="background:#f8fafc;border-radius:8px;padding:10px 12px">
+            <div style="font-size:11px;font-weight:700;color:${MEAL_COLORS[mt]};margin-bottom:4px;text-transform:uppercase">${MEAL_LABELS[mt]}</div>
+            <div style="font-size:13px;line-height:1.6">${items.length ? items.join(' · ') : '<span style="color:var(--muted)">-</span>'}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+  if (!data.days || !data.days.length) html = '<p style="color:var(--muted)">등록된 일별 메뉴가 없습니다.</p>';
+
+  document.getElementById('detailModalBody').innerHTML = html;
+  document.getElementById('detailDeleteBtn').onclick = () => {
+    if (!confirm('이 주차 식단을 삭제하시겠습니까?')) return;
+    deleteMenuWeek(weekKey);
+    closeDetailModal();
+    renderWeekList();
+    renderAnalysis();
+  };
+  document.getElementById('detailModal').classList.add('show');
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').classList.remove('show');
+  _detailKey = null;
+}
+
+/* ══════════════════════════════════════════════════
+   모달 — 직접 입력
+══════════════════════════════════════════════════ */
+function showManualModal() {
+  // Default week start: this Monday
+  const now = new Date();
+  const monday = getMondayOf(toIso(now.getFullYear(), now.getMonth()+1, now.getDate()));
+  document.getElementById('manualWeekStart').value = monday;
+  updateManualDayTabs();
+  buildManualDayPanels(monday);
+  document.getElementById('manualModal').classList.add('show');
+}
+
+function closeManualModal() {
+  document.getElementById('manualModal').classList.remove('show');
+}
+
+function updateManualDayTabs() {
+  const start = document.getElementById('manualWeekStart').value;
+  if (!start) return;
+  const end = addDays(start, 4);
+  document.getElementById('manualWeekRange').textContent =
+    `(${isoToKorean(start)} ~ ${isoToKorean(end)})`;
+  buildManualDayPanels(start);
+}
+
+function buildManualDayPanels(weekStart) {
+  const container = document.getElementById('manualDayPanels');
+  container.innerHTML = '';
+  const tabs = document.querySelectorAll('#manualDayTabs .day-tab');
+
+  for (let i = 0; i < 5; i++) {
+    const dateIso = addDays(weekStart, i);
+    const dateLabel = isoToKorean(dateIso);
+    if (tabs[i]) tabs[i].textContent = dateLabel;
+
+    const panel = document.createElement('div');
+    panel.className = `day-panel${i===0?' active':''}`;
+    panel.id = `dayPanel${i}`;
+    panel.dataset.date = dateIso;
+
+    panel.innerHTML = ['breakfast','lunchA','lunchB','dinner'].map(mt => `
+      <div class="menu-field">
+        <label><span class="meal-dot dot-${mt}"></span>${MEAL_LABELS[mt]}</label>
+        <textarea id="manual_${mt}_${i}" placeholder="예: 밥, 된장국, 제육볶음, 깍두기, 나물" rows="2"></textarea>
+      </div>`).join('');
+    container.appendChild(panel);
+  }
+}
+
+function switchDayTab(idx, btn) {
+  document.querySelectorAll('.day-panel').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.day-tab').forEach(el => el.classList.remove('active'));
+  const panel = document.getElementById(`dayPanel${idx}`);
+  if (panel) panel.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function saveManualEntry() {
+  const weekStart = document.getElementById('manualWeekStart').value;
+  if (!weekStart) { alert('주 시작일을 선택해주세요.'); return; }
+
+  const monday = getMondayOf(weekStart);
+  const days = [];
+  for (let i = 0; i < 5; i++) {
+    const panel = document.getElementById(`dayPanel${i}`);
+    if (!panel) continue;
+    const dateIso = panel.dataset.date || addDays(monday, i);
+    const day = {
+      date: dateIso,
+      dayLabel: isoToKorean(dateIso),
+      breakfast: splitMenuItems(document.getElementById(`manual_breakfast_${i}`)?.value||''),
+      lunchA:    splitMenuItems(document.getElementById(`manual_lunchA_${i}`)?.value||''),
+      lunchB:    splitMenuItems(document.getElementById(`manual_lunchB_${i}`)?.value||''),
+      dinner:    splitMenuItems(document.getElementById(`manual_dinner_${i}`)?.value||''),
+    };
+    const hasData = day.breakfast.length || day.lunchA.length || day.lunchB.length || day.dinner.length;
+    if (hasData) days.push(day);
+  }
+
+  if (!days.length) { alert('최소 하나 이상의 메뉴를 입력해주세요.'); return; }
+
+  saveMenuWeek(monday, {
+    label: makeWeekLabel(monday),
+    month: isoToYearMonth(monday),
+    weekStart: monday,
+    weekEnd: addDays(monday, 4),
+    days
+  });
+
+  closeManualModal();
+  showResult('success', `${makeWeekLabel(monday)} 식단이 저장되었습니다.`);
+  renderWeekList();
+  renderAnalysis();
+}
+
+/* ══════════════════════════════════════════════════
+   Excel 업로드 핸들러
+══════════════════════════════════════════════════ */
+function handleXlsxUpload(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (!file.name.match(/\.(xlsx|xls)$/i)) {
+    showResult('error', 'xlsx 또는 xls 파일만 업로드 가능합니다.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const { weekKey, weekData } = parseMenuExcel(ev.target.result);
+      saveMenuWeek(weekKey, weekData);
+      showResult('success', `${weekData.label} 식단표가 업로드되었습니다. (${(weekData.days||[]).length}일 · 메뉴 ${
+        (weekData.days||[]).reduce((s,d)=>s+(d.breakfast||[]).length+(d.lunchA||[]).length+(d.lunchB||[]).length+(d.dinner||[]).length,0)}건)`);
+      renderWeekList();
+      renderAnalysis();
+    } catch(err) {
+      showResult('error', `업로드 실패: ${err.message}`);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showResult(type, msg) {
+  const el = document.getElementById('uploadResult');
+  el.className = `upload-result ${type}`;
+  el.textContent = msg;
+  setTimeout(() => { el.className = 'upload-result'; }, 6000);
+}
+
+/* ══════════════════════════════════════════════════
+   초기화
+══════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', async () => {
+  await authGetSession();
+  renderWeekList();
+  renderAnalysis();
+});
+</script>
+</body>
+</html>
