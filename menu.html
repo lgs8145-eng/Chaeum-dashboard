@@ -433,24 +433,31 @@ function excelSerialToISO(serial) {
 
 function cellToISO(c, refYear) {
   if (!c) return null;
-  // SheetJS가 날짜 타입으로 이미 파싱한 경우
+  // SheetJS cellDates:true 로 이미 Date 객체로 변환된 경우
   if (c.t === 'd') {
     const d = c.v;
     return toIso(d.getFullYear(), d.getMonth()+1, d.getDate());
   }
-  // 숫자 → Excel 시리얼 날짜
+  // 숫자 → Excel 시리얼 날짜 (30000 이상 = 1982년 이후 보장)
   if (typeof c.v === 'number') return excelSerialToISO(c.v);
-  const s = String(c.v || '').trim();
-  // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
-  let m = s.match(/(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/);
-  if (m) return toIso(+m[1], +m[2], +m[3]);
-  // M/D, M월D, M.D, M월D일 (refYear 사용)
-  m = s.match(/^(\d{1,2})[\/월\.](\d{1,2})/);
-  if (m && refYear) return toIso(refYear, +m[1], +m[2]);
+
+  // 문자열 파싱 — c.v 우선, c.w(SheetJS 포맷 텍스트) 병행 시도
+  // [$-ko-KR]m "월" d"일" (ddd) → "5월 12일 (월)" 형태 포함
+  for (const raw of [c.v, c.w]) {
+    if (!raw) continue;
+    const s = String(raw).trim();
+    // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
+    let m = s.match(/(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/);
+    if (m) return toIso(+m[1], +m[2], +m[3]);
+    // "5월 12일 (월)", "5월12일", "5/12", "5.12" — \s* 로 월/일 사이 공백 허용
+    m = s.match(/^(\d{1,2})[\/월\.]\s*(\d{1,2})/);
+    if (m && refYear) return toIso(refYear, +m[1], +m[2]);
+  }
   return null;
 }
 
-// 시트 전체에서 "5/12(월)" 또는 "2026-05-12" 형태의 날짜 찾아 첫 번째 반환
+// 시트 전체에서 날짜 셀을 찾아 첫 번째 ISO 문자열 반환
+// [$-ko-KR]m "월" d"일" (ddd) 포맷 포함 — c.w(포맷 텍스트)도 검사
 function findWeekReference(ws, range, refYear) {
   for (let r = 0; r <= Math.min(range.e.r, 20); r++) {
     for (let c = 0; c <= Math.min(range.e.c, 10); c++) {
