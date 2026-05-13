@@ -554,16 +554,29 @@ function parseGridFormat(ws, range, refYear) {
   const colDate = {};
   const refIso = findWeekReference(ws, range, refYear);
 
+  const usedDates = new Set(); // 동일 날짜 중복 열 방지 (병합 셀)
   for (let ci = 1; ci <= maxCol; ci++) {
-    const dc = effectiveCell(headerRow, ci);
+    // 직접 셀이 없으면 병합 셀의 복제 — 날짜 중복 등록 방지
+    const directCell = ws[XLSX.utils.encode_cell({r: headerRow, c: ci})];
+    const dc = directCell || effectiveCell(headerRow, ci);
     if (!dc) continue;
+    if (!directCell && usedDates.size > 0) continue; // 병합 복제 셀 건너뜀
+
     const iso = cellToISO(dc, refYear);
     if (iso) {
-      colDate[ci] = iso;
+      const dow = isoToUTC(iso).getUTCDay();
+      if (dow >= 1 && dow <= 5 && !usedDates.has(iso)) { // 월(1)~금(5)만
+        colDate[ci] = iso;
+        usedDates.add(iso);
+      }
     } else {
       const di = getDayIndex(String(dc.v || ''));
-      if (di >= 0 && refIso) {
-        colDate[ci] = addDays(getMondayOf(refIso), di);
+      if (di >= 0 && di <= 4 && refIso) { // 월(0)~금(4)만 (DAY_NAMES 인덱스)
+        const iso2 = addDays(getMondayOf(refIso), di);
+        if (!usedDates.has(iso2)) {
+          colDate[ci] = iso2;
+          usedDates.add(iso2);
+        }
       }
     }
   }
@@ -632,6 +645,9 @@ function parseColumnarFormat(ws, range, refYear) {
     }
     if (!iso) iso = lastIso;
     if (!iso) continue;
+    // 주말(토·일) 제외
+    const dow = isoToUTC(iso).getUTCDay();
+    if (dow === 0 || dow === 6) continue;
     lastIso = iso;
 
     const items = splitMenuItems(menuRaw);
@@ -642,15 +658,33 @@ function parseColumnarFormat(ws, range, refYear) {
   return Object.keys(days).length ? days : null;
 }
 
+function emptyDay(iso) {
+  return { date: iso, dayLabel: isoToKorean(iso), breakfast: [], lunchA: [], lunchB: [], dinner: [] };
+}
+
 function parseSheetWeek(ws, refYear) {
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
   let days = parseGridFormat(ws, range, refYear);
   if (!days) days = parseColumnarFormat(ws, range, refYear);
   if (!days || !Object.keys(days).length) return null;
 
-  const dates = Object.keys(days).sort();
-  const weekStart = getMondayOf(dates[0]);
+  // 주말 제거 (혹시 남아있는 경우 최종 방어)
+  for (const iso of Object.keys(days)) {
+    const dow = isoToUTC(iso).getUTCDay();
+    if (dow === 0 || dow === 6) delete days[iso];
+  }
+  if (!Object.keys(days).length) return null;
+
+  // 파싱된 날짜 중 가장 이른 날 기준 월요일 확정
+  const weekdayDates = Object.keys(days).sort();
+  const weekStart = getMondayOf(weekdayDates[0]);
   const month = isoToYearMonth(weekStart);
+
+  // 월~금 5일 완전 보장 — 파싱에 누락된 날은 빈 구조로 채움
+  const weekDays = [0, 1, 2, 3, 4].map(offset => {
+    const iso = addDays(weekStart, offset);
+    return days[iso] || emptyDay(iso);
+  });
 
   return {
     weekKey: weekStart,
@@ -659,7 +693,7 @@ function parseSheetWeek(ws, refYear) {
       month,
       weekStart,
       weekEnd: addDays(weekStart, 4),
-      days: dates.map(d => days[d])
+      days: weekDays   // 항상 5개 (월·화·수·목·금)
     }
   };
 }
