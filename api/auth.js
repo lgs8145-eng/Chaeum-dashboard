@@ -12,6 +12,47 @@ const crypto = require('crypto');
 
 const TOKEN_TTL_SEC = 8 * 3600; // 8시간
 
+// HMAC 서명 시크릿 — 환경변수 없으면 하드코딩 기본값 사용 (보안 강화 시 AUTH_SECRET 설정)
+const AUTH_SECRET = process.env.AUTH_SECRET || 'chaeum-tok-secret-v1-2026';
+
+// 쿠키값 생성: "{token}.{role}.{hmac32}" — 서버리스 재시작 후에도 자체 검증 가능
+function makeCookieValue(token, role) {
+  const sig = crypto.createHmac('sha256', AUTH_SECRET)
+    .update(`${token}|${role}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `${token}.${role}.${sig}`;
+}
+
+// 쿠키값 파싱 + HMAC 검증 → { token, role } 또는 null
+function parseCookieValue(value) {
+  const parts = (value || '').split('.');
+  if (parts.length !== 3) return null;
+  const [token, role, sig] = parts;
+  if (!['admin', 'viewer'].includes(role)) return null;
+  const expected = crypto.createHmac('sha256', AUTH_SECRET)
+    .update(`${token}|${role}`)
+    .digest('hex')
+    .slice(0, 32);
+  if (sig !== expected) return null;
+  return { token, role };
+}
+
+// 쿠키에서 역할 추출 (HMAC 우선, 레거시 Redis/mem 폴백)
+async function getRoleFromCookie(cookieHeader) {
+  const raw = parseCookie(cookieHeader)['chaeum_tok'] || '';
+  const parsed = parseCookieValue(raw);
+  if (parsed) return { role: parsed.role, token: parsed.token };
+  // 레거시 plain-hex 토큰 (HMAC 적용 전 로그인 세션 대응)
+  if (raw) {
+    let role = null;
+    try { role = await rGet(`session:${raw}`); } catch {}
+    if (!role) role = memGet(raw);
+    if (role) return { role, token: raw };
+  }
+  return { role: null, token: null };
+}
+
 // 버전을 올리면 Redis 저장값을 무시하고 DEFAULT_HASHES로 강제 초기화
 const PW_VERSION = 2;
 
@@ -135,34 +176,22 @@ module.exports = async (req, res) => {
     if (!role) return res.status(401).json({ ok: false });
 
     const token = makeToken();
-    try { await rSet(`session:${token}`, role, TOKEN_TTL_SEC); }
-    catch { memSet(token, role); } // Redis 불가 시 인메모리 저장
+    try { await rSet(`session:${token}`, role, TOKEN_TTL_SEC); } catch { memSet(token, role); }
 
-    setCookie(res, token, TOKEN_TTL_SEC);
+    setCookie(res, makeCookieValue(token, role), TOKEN_TTL_SEC);
     return res.status(200).json({ ok: true, role });
   }
 
   // ── 세션 검증 ────────────────────────────────────────────────
   if (action === 'verify' && req.method === 'GET') {
-    const { chaeum_tok: token } = parseCookie(req.headers.cookie);
-    if (!token) return res.status(401).json({ ok: false });
-
-    let role = null;
-    try { role = await rGet(`session:${token}`); } catch {}
-    if (!role) role = memGet(token);
+    const { role } = await getRoleFromCookie(req.headers.cookie);
     if (!role) return res.status(401).json({ ok: false });
-
     return res.status(200).json({ ok: true, role });
   }
 
   // ── 비밀번호 변경 ────────────────────────────────────────────
   if (action === 'change-pw' && req.method === 'POST') {
-    const { chaeum_tok: token } = parseCookie(req.headers.cookie);
-    let role = null;
-    if (token) {
-      try { role = await rGet(`session:${token}`); } catch {}
-      if (!role) role = memGet(token);
-    }
+    const { role } = await getRoleFromCookie(req.headers.cookie);
     if (role !== 'admin') return res.status(403).json({ ok: false });
 
     const { currentPw = '', newAdminPw = '', newViewerPw = '' } = req.body || {};
@@ -181,7 +210,7 @@ module.exports = async (req, res) => {
 
   // ── 로그아웃 ─────────────────────────────────────────────────
   if (action === 'logout' && req.method === 'POST') {
-    const { chaeum_tok: token } = parseCookie(req.headers.cookie);
+    const { token } = await getRoleFromCookie(req.headers.cookie);
     if (token) {
       try { await rDel(`session:${token}`); } catch {}
       _memSessions.delete(token);
