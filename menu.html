@@ -993,6 +993,45 @@ function renderFreqCharts(freq) {
   ];
 }
 
+function renderPrefChart(pref) {
+  const canvas = document.getElementById('prefChart');
+  if (!canvas) return;
+  const top = Object.entries(pref).sort((a,b)=>b[1].score-a[1].score).slice(0, 15);
+  const labels = top.map(([nm]) => nm);
+  const scores = top.map(([,d]) => d.score);
+  const colors = scores.map(s => s >= 105 ? '#16a34a99' : s <= 94 ? '#dc262699' : '#64748b66');
+  const borders = scores.map(s => s >= 105 ? '#16a34a' : s <= 94 ? '#dc2626' : '#64748b');
+
+  if (_prefChart) { _prefChart.destroy(); _prefChart = null; }
+  _prefChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: scores,
+        backgroundColor: colors,
+        borderColor: borders,
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          min: 70,
+          ticks: { callback: v => v + '%' },
+          grid: { color: '#e2e8f0' }
+        },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
 /* ── 중복 탭 ── */
 function buildDupTab(dups) {
   const months = Object.keys(dups).sort().reverse();
@@ -1090,6 +1129,7 @@ function buildPrefTab(pref, count) {
     <h3>메뉴 선호도 순위</h3>
     <div class="desc">해당 메뉴 제공일의 실제 식수 ÷ 월 평균 식수 × 100. 100% 초과 = 식수 높은 날에 자주 등장</div>
     <div class="note" style="margin-bottom:12px">⚠ 식수는 메뉴 외에도 요일·날씨·행사 등 다양한 요인의 영향을 받습니다. 참고 지표로 활용하세요.</div>
+    <div class="chart-wrap tall" style="margin-bottom:16px"><canvas id="prefChart"></canvas></div>
     <div style="overflow-x:auto">
       <table>
         <thead><tr><th>메뉴</th><th>구분</th><th>선호도 지수</th><th>평가</th><th>분석일</th></tr></thead>
