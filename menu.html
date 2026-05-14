@@ -1169,7 +1169,7 @@ function renderAnalysis() {
       <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
       ${hasPref ? '<button class="tab-item" onclick="showTab(\'pref\',this)">⭐ 선호도 분석</button>' : ''}
       <button class="tab-item" onclick="showTab('feedback',this)">💡 관리자 피드백</button>
-      <button class="tab-item" onclick="showTab('ai',this)">🤖 AI 심층 분석</button>
+      <button class="tab-item" onclick="showTab('ai',this)">📊 심층 분석</button>
     </div>
 
     <div class="tab-content active" id="tab-freq">${buildFreqTab(freq)}</div>
@@ -1431,10 +1431,10 @@ function buildAITab(allMenus) {
 
   return `
     <div class="card">
-      <h3 style="margin-bottom:4px">🤖 AI 심층 분석</h3>
+      <h3 style="margin-bottom:4px">📊 심층 분석</h3>
       <div class="desc" style="margin-bottom:14px">
-        단체급식 전문가 AI가 3개 Layer(반복주기·구성 적정성·운영 효율성)를 분석합니다.<br>
-        분석 범위를 지정한 뒤 실행하세요. Anthropic API를 사용하며 10~25초 소요됩니다.
+        3개 Layer(반복주기·구성 적정성·운영 효율성)를 규칙 기반으로 즉시 분석합니다.<br>
+        분석 범위를 지정한 뒤 실행하세요. 메인 메뉴 기준으로 집계됩니다.
       </div>
 
       <div class="ai-range-bar">
@@ -1443,7 +1443,7 @@ function buildAITab(allMenus) {
         <span style="font-size:13px;color:var(--muted)">~</span>
         <select id="aiToWeek">${lastOpt}</select>
         <span id="aiWeekCount" style="font-size:12px;color:var(--muted)"></span>
-        <button class="btn btn-primary" onclick="runAIAnalysis()" id="aiRunBtn">🤖 분석 실행</button>
+        <button class="btn btn-primary" onclick="runAIAnalysis()" id="aiRunBtn">📊 분석 실행</button>
       </div>
 
       <div id="aiAnalysisResult"></div>
@@ -1512,11 +1512,11 @@ function buildMenuText(weekKeys, allMenus) {
   return lines.join('\n');
 }
 
-// AI 분석 실행
-async function runAIAnalysis() {
-  const fromWeek = document.getElementById('aiFromWeek')?.value;
-  const toWeek   = document.getElementById('aiToWeek')?.value;
-  const btn      = document.getElementById('aiRunBtn');
+// 규칙 기반 3-Layer 심층 분석 실행
+function runAIAnalysis() {
+  const fromWeek  = document.getElementById('aiFromWeek')?.value;
+  const toWeek    = document.getElementById('aiToWeek')?.value;
+  const btn       = document.getElementById('aiRunBtn');
   const resultDiv = document.getElementById('aiAnalysisResult');
   if (!fromWeek || !toWeek || !resultDiv) return;
 
@@ -1528,43 +1528,259 @@ async function runAIAnalysis() {
     return;
   }
 
-  const menuText = buildMenuText(keys, allMenus);
-  const firstLbl = allMenus[keys[0]].label || keys[0];
-  const lastLbl  = allMenus[keys[keys.length-1]].label || keys[keys.length-1];
-  const period   = `${firstLbl} ~ ${lastLbl} (${keys.length}주, 약 ${keys.length*5}일)`;
-
   btn.disabled = true;
   btn.textContent = '분석 중...';
   resultDiv.innerHTML = `
     <div class="ai-loading">
-      <div class="ai-icon">🤖</div>
-      <div class="ai-title">AI 심층 분석 중입니다</div>
-      <div style="font-size:13px">3개 Layer 분석에 10~25초 소요됩니다. 잠시만 기다려주세요.</div>
+      <div class="ai-icon" style="font-size:36px;animation:aipulse 1.4s ease-in-out infinite">📊</div>
+      <div class="ai-title">3-Layer 분석 중...</div>
     </div>`;
 
-  try {
-    const res = await fetch('/api/analyze-menu', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ menuText, period })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'server_error');
+  // 렌더링 블로킹 방지 후 동기 분석 실행
+  setTimeout(() => {
+    try {
+      const html = buildRuleReport(keys, allMenus);
+      const firstLbl = allMenus[keys[0]].label || keys[0];
+      const lastLbl  = allMenus[keys[keys.length-1]].label || keys[keys.length-1];
+      const period   = `${firstLbl} ~ ${lastLbl} (${keys.length}주 · ${keys.length*5}일)`;
+      const now = new Date().toLocaleString('ko-KR', { hour12: false });
+      resultDiv.innerHTML = `
+        <div class="ai-result-header">
+          <span>분석 기간: <strong>${period}</strong></span>
+          <span style="color:var(--muted);font-size:12px">분석 완료 · ${now}</span>
+        </div>
+        <div class="ai-md">${html}</div>`;
+    } catch (err) {
+      resultDiv.innerHTML = `<div class="upload-result error">분석 오류: ${err.message}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📊 분석 실행';
+    }
+  }, 60);
+}
 
-    const now = new Date().toLocaleString('ko-KR', { hour12: false });
-    resultDiv.innerHTML = `
-      <div class="ai-result-header">
-        <span>분석 기간: <strong>${period}</strong></span>
-        <span style="color:var(--muted);font-size:12px">AI 분석 완료 · ${now}</span>
-      </div>
-      ${keys.length > 8 ? '<div class="ai-note-limit">⚠ 8주 초과 선택 시 최근 8주 상세 데이터만 분석에 활용됩니다. 전체 기간 통계는 반영됩니다.</div>' : ''}
-      <div class="ai-md">${mdToHtml(data.analysis)}</div>`;
-  } catch (err) {
-    resultDiv.innerHTML = `<div class="upload-result error">분석 실패: ${err.message}</div>`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🤖 분석 실행';
+// ── 규칙 기반 3-Layer 분석 엔진 ─────────────────────────────
+function buildRuleReport(weekKeys, allMenus) {
+  const MEAL_TYPES = ['breakfast','lunchA','lunchB','dinner'];
+  const MK = { breakfast:'조식', lunchA:'중식A', lunchB:'중식B', dinner:'석식' };
+
+  // ─ 데이터 수집 ─────────────────────────────────────────────
+  const menuWeekMap = {};  // name → Set<weekKey>
+  const menuMtMap   = {};  // name → 최초 등장 mealType
+  let totalDays = 0;
+  const mealDays = { breakfast:0, lunchA:0, lunchB:0, dinner:0 };
+  const mealSums = { breakfast:0, lunchA:0, lunchB:0, dinner:0 };
+
+  // 구성 카테고리 키워드
+  const SOUP_RE  = /찌개|국$|탕$|탕류|스프|수프|전골|뚝배기|국밥/;
+  const GRAIN_RE = /밥$|볶음밥|비빔밥|덮밥|면$|라면|우동|파스타|국수|냉면|빵$|토스트|죽$/;
+  const GRILL_RE = /구이|볶음|조림|찜|전$|강정|튀김|까스|가스/;
+
+  const catCnt = {
+    breakfast:{ soup:0, grain:0, grill:0 },
+    lunchA   :{ soup:0, grain:0, grill:0 },
+    lunchB   :{ soup:0, grain:0, grill:0 },
+    dinner   :{ soup:0, grain:0, grill:0 },
+  };
+
+  for (const wk of weekKeys) {
+    const data = allMenus[wk];
+    if (!data) continue;
+    for (const day of (data.days || [])) {
+      totalDays++;
+      for (const mt of MEAL_TYPES) {
+        const items = (day[mt] || []).map(i => i.trim()).filter(i => i && !isSideDish(i));
+        if (items.length) { mealDays[mt]++; mealSums[mt] += items.length; }
+        const text = items.join(' ');
+        if (SOUP_RE.test(text))  catCnt[mt].soup++;
+        if (GRAIN_RE.test(text)) catCnt[mt].grain++;
+        if (GRILL_RE.test(text)) catCnt[mt].grill++;
+        for (const item of items) {
+          if (!menuWeekMap[item]) menuWeekMap[item] = new Set();
+          menuWeekMap[item].add(wk);
+          if (!menuMtMap[item]) menuMtMap[item] = mt;
+        }
+      }
+    }
   }
+
+  const totalWeeks = weekKeys.length;
+  const menuList = Object.entries(menuWeekMap)
+    .map(([name, ws]) => ({ name, count: ws.size, weeks: [...ws].sort() }))
+    .sort((a, b) => b.count - a.count);
+  const total = menuList.length;
+
+  // ─ Layer 1: 반복 주기 분석 ─────────────────────────────────
+  const wkIdx = weekKeys.reduce((m, k, i) => { m[k] = i; return m; }, {});
+
+  const cycleDist = [0, 0, 0, 0]; // [≥75%, 50~75%, 25~50%, <25%]
+  for (const m of menuList) {
+    const r = m.count / totalWeeks;
+    if      (r >= 0.75) cycleDist[0]++;
+    else if (r >= 0.50) cycleDist[1]++;
+    else if (r >= 0.25) cycleDist[2]++;
+    else                cycleDist[3]++;
+  }
+
+  const overRep = menuList.filter(m => {
+    if (m.count < 3) return false;
+    const idxs = m.weeks.map(w => wkIdx[w]).filter(i => i != null).sort((a,b)=>a-b);
+    for (let i = 0; i <= idxs.length - 3; i++) {
+      if (idxs[i+2] - idxs[i] <= 3) return true;
+    }
+    return false;
+  });
+
+  const everyWeek = totalWeeks >= 3 ? menuList.filter(m => m.count >= totalWeeks) : [];
+  const onceOnly  = menuList.filter(m => m.count === 1);
+  const uniqueRatio = total ? Math.round(onceOnly.length / total * 100) : 0;
+
+  // ─ Layer 3: 식재료 ──────────────────────────────────────────
+  const INGS = [
+    { key:'돼지고기', re:/제육|돼지|삼겹|목살|항정|보쌈|순대|돈까스|돈가스/ },
+    { key:'닭고기',   re:/닭|치킨|닭갈비|닭볶음|닭가슴|닭강정|통닭/ },
+    { key:'소고기',   re:/소고기|불고기|갈비(?!찜)|육개장|설렁탕|쇠고기|차돌/ },
+    { key:'두부',     re:/두부|순두부/ },
+    { key:'계란',     re:/계란|달걀|에그/ },
+    { key:'해산물',   re:/새우|오징어|고등어|갈치|연어|참치|명란|낙지|문어|조개|굴/ },
+  ];
+  for (const ing of INGS) {
+    ing.count = menuList.reduce((s, m) => s + (ing.re.test(m.name) ? m.count : 0), 0);
+  }
+  const topIngs = INGS.filter(i => i.count > 0).sort((a,b) => b.count - a.count);
+
+  // ─ HTML 빌드 ───────────────────────────────────────────────
+  let h = '';
+  const pct = (n, d) => d ? Math.round(n / d * 100) : 0;
+
+  // ━━ Layer 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  h += `<h3 class="ai-h3">📊 1계층 — 반복 주기 분석 <span style="font-size:12px;font-weight:400;color:var(--muted)">${totalWeeks}주 · ${totalDays}일 기준</span></h3>`;
+
+  h += `<div class="ai-table-wrap"><table class="ai-table">
+    <tr><th>주기</th><th>기준 (전체 주차 대비)</th><th>메뉴 수</th><th>비율</th></tr>
+    <tr><td>매주 반복</td><td>75% 이상</td><td><strong>${cycleDist[0]}</strong>종</td><td>${pct(cycleDist[0],total)}%</td></tr>
+    <tr><td>격주 반복</td><td>50~75%</td><td>${cycleDist[1]}종</td><td>${pct(cycleDist[1],total)}%</td></tr>
+    <tr><td>3주 이상 간격</td><td>25~50%</td><td>${cycleDist[2]}종</td><td>${pct(cycleDist[2],total)}%</td></tr>
+    <tr><td>다양성 메뉴</td><td>25% 미만</td><td>${cycleDist[3]}종</td><td>${pct(cycleDist[3],total)}%</td></tr>
+  </table></div>`;
+
+  h += `<p class="ai-p">1회 등장 다양성 메뉴 <strong>${onceOnly.length}종 (${uniqueRatio}%)</strong> · 고유 메인 메뉴 <strong>총 ${total}종</strong></p>`;
+
+  if (everyWeek.length) {
+    h += `<h4 class="ai-h4">⚠ 매주 반복 메뉴 (${everyWeek.length}종)</h4>`;
+    h += `<ul class="ai-list">${everyWeek.slice(0,12).map(m =>
+      `<li><strong>${m.name}</strong> — ${m.count}/${totalWeeks}주 <span style="color:var(--muted)">(${MK[menuMtMap[m.name]]||''})</span></li>`
+    ).join('')}${everyWeek.length>12?`<li style="color:var(--muted)">외 ${everyWeek.length-12}종</li>`:''}</ul>`;
+  }
+
+  if (overRep.length) {
+    h += `<h4 class="ai-h4">🔴 과다 반복 메뉴 — 4주 내 3회 이상 (${overRep.length}종)</h4>`;
+    h += `<div class="ai-table-wrap"><table class="ai-table">
+      <tr><th>메뉴</th><th>구분</th><th>등장 횟수</th></tr>
+      ${overRep.slice(0,10).map(m =>
+        `<tr><td><strong>${m.name}</strong></td><td>${MK[menuMtMap[m.name]]||''}</td>
+         <td><span class="badge badge-red">${m.count}회</span></td></tr>`
+      ).join('')}
+    </table></div>`;
+  } else {
+    h += `<p class="ai-p" style="color:var(--good)">✅ 4주 내 3회 이상 과다 반복 메뉴가 없습니다.</p>`;
+  }
+
+  h += '<hr class="ai-hr">';
+
+  // ━━ Layer 2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  h += `<h3 class="ai-h3">🥗 2계층 — 구성 적정성 평가</h3>`;
+
+  const compRows = MEAL_TYPES.filter(mt => mealDays[mt] > 0).map(mt => {
+    const covPct   = pct(mealDays[mt], totalDays);
+    const avg      = mealDays[mt] ? (mealSums[mt] / mealDays[mt]).toFixed(1) : 0;
+    const soupPct  = pct(catCnt[mt].soup,  mealDays[mt]);
+    const grainPct = pct(catCnt[mt].grain, mealDays[mt]);
+    const grillPct = pct(catCnt[mt].grill, mealDays[mt]);
+    const avgOk    = parseFloat(avg) >= 3;
+    return `<tr>
+      <td><strong>${MK[mt]}</strong></td>
+      <td>${mealDays[mt]}일 (${covPct}%)</td>
+      <td>${avgOk ? '✅' : '⚠'} ${avg}개</td>
+      <td>${soupPct >= 70 ? '✅' : soupPct >= 40 ? '△' : '⚠'} ${soupPct}%</td>
+      <td>${grainPct >= 70 ? '✅' : grainPct >= 40 ? '△' : '⚠'} ${grainPct}%</td>
+      <td>${grillPct >= 50 ? '✅' : '△'} ${grillPct}%</td>
+    </tr>`;
+  }).join('');
+
+  h += `<div class="ai-table-wrap"><table class="ai-table">
+    <tr><th>구분</th><th>제공 현황</th><th>평균 메뉴 수</th><th>국·탕 포함</th><th>주식 포함</th><th>주요리(구이·볶음)</th></tr>
+    ${compRows}
+  </table></div>`;
+
+  const improvements = [];
+  for (const mt of MEAL_TYPES) {
+    if (!mealDays[mt]) continue;
+    const avg = mealSums[mt] / mealDays[mt];
+    if (avg < 3)
+      improvements.push(`${MK[mt]} 평균 메뉴 수 ${avg.toFixed(1)}개 — 메인 메뉴 3개 이상 구성 권고`);
+    if (pct(catCnt[mt].soup, mealDays[mt]) < 50 && mt !== 'lunchB')
+      improvements.push(`${MK[mt]} 국·탕류 포함률 ${pct(catCnt[mt].soup, mealDays[mt])}% — 50% 이상 유지 권고`);
+    if (mealDays[mt] / totalDays < 0.7 && (mt === 'breakfast' || mt === 'dinner'))
+      improvements.push(`${MK[mt]} 제공일 ${pct(mealDays[mt],totalDays)}% — 운영 계획 재검토 권고`);
+  }
+
+  if (improvements.length) {
+    h += `<h4 class="ai-h4">개선 권고 사항</h4>`;
+    h += `<ul class="ai-checklist">${improvements.map(t =>
+      `<li><span class="check-box">☐</span>${t}</li>`).join('')}</ul>`;
+  } else {
+    h += `<p class="ai-p" style="color:var(--good)">✅ 전체 끼니 구성이 균형 있게 유지되고 있습니다.</p>`;
+  }
+
+  h += '<hr class="ai-hr">';
+
+  // ━━ Layer 3 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  h += `<h3 class="ai-h3">⚙️ 3계층 — 운영 효율성 제안</h3>`;
+
+  if (topIngs.length) {
+    h += `<h4 class="ai-h4">주요 식재료 활용 빈도</h4>`;
+    h += `<div class="ai-table-wrap"><table class="ai-table">
+      <tr><th>식재료</th><th>등장 횟수</th><th>빈도</th></tr>
+      ${topIngs.map(i => {
+        const bar = '█'.repeat(Math.min(Math.round(i.count / Math.max(totalDays,1) * 10), 10));
+        return `<tr><td><strong>${i.key}</strong></td><td>${i.count}회</td>
+          <td style="font-family:monospace;font-size:11px;color:var(--primary);letter-spacing:-1px">${bar}</td></tr>`;
+      }).join('')}
+    </table></div>`;
+
+    if (topIngs[0] && topIngs[0].count > totalDays * 0.4) {
+      h += `<p class="ai-p" style="color:var(--warn)">⚠ <strong>${topIngs[0].key}</strong> 활용 빈도(${topIngs[0].count}회)가 두드러집니다. 다른 단백질 식재료와 교대 편성을 검토하세요.</p>`;
+    }
+  }
+
+  // 즉시 실행 액션
+  h += `<h4 class="ai-h4">즉시 실행 권고 액션</h4>`;
+  const actions = [];
+
+  if (overRep.length > 0) {
+    const top2 = overRep.slice(0, 2).map(m => m.name).join(', ');
+    actions.push(`<strong>${top2}</strong> 등 과다 반복 메뉴를 다음 2주 식단에서 제외하거나 동류 메뉴로 교체하세요.`);
+  }
+  if (uniqueRatio < 30) {
+    actions.push(`다양성 메뉴 비율이 ${uniqueRatio}%로 낮습니다. 새로운 메뉴를 주 1~2개 이상 편성하세요.`);
+  }
+  if (topIngs.length >= 2 && topIngs[0].count > topIngs[1].count * 2) {
+    actions.push(`${topIngs[0].key} 위주 편성이 두드러집니다. ${topIngs[1].key}·${topIngs[2]?.key || '해산물'} 활용 메뉴를 늘려 식재료를 분산하세요.`);
+  }
+  const lightMeal = MEAL_TYPES.filter(mt => mealDays[mt] > 0)
+    .sort((a,b) => (mealSums[a]/mealDays[a]) - (mealSums[b]/mealDays[b]))[0];
+  if (lightMeal && (mealSums[lightMeal] / mealDays[lightMeal]) < 3) {
+    actions.push(`${MK[lightMeal]} 평균 메뉴 수가 부족합니다. 반찬 1~2가지를 추가 편성하세요.`);
+  }
+  if (!actions.length) {
+    actions.push('현재 식단 구성이 전반적으로 양호합니다. 분기별 신메뉴 도입으로 다양성을 지속 관리하세요.');
+  }
+
+  h += `<ul class="ai-checklist">${actions.map(t =>
+    `<li><span class="check-box">☐</span>${t}</li>`).join('')}</ul>`;
+
+  return h;
 }
 
 // Markdown → HTML 변환 (AI 출력 전용 미니 렌더러)
