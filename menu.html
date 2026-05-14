@@ -904,15 +904,42 @@ function buildDailyMap() {
 /* ══════════════════════════════════════════════════
    분석 엔진
 ══════════════════════════════════════════════════ */
+
+// 빈도·중복 분석에서 제외할 일반 반찬·기본 제공 항목 (정규식 패턴)
+// 메인 메뉴(주요리·국·탕류) 중심 분석을 위해 기본 곁들임·음료·소스류 필터링
+const SIDE_DISH_PATTERNS = [
+  // 밥류 (기본 제공 — 항상 등장하므로 빈도 의미 없음)
+  /^(?:흰)?밥$/, /^현미밥$/, /^잡곡밥$/, /^오곡밥$/, /^보리밥$/, /^영양밥$/,
+  // 김치류
+  /김치$/, /깍두기/, /총각김치/, /열무김치/, /백김치/, /겉절이/, /동치미/,
+  // 기본 반찬·나물·무침
+  /^(?:시금치|콩나물|숙주|도라지|고사리|취나물|무나물|애호박|가지)무침?$/,
+  /^(?:시금치|콩나물|숙주|도라지|고사리|취나물|무나물)나물$/,
+  /^(?:멸치|땅콩|호두|아몬드)볶음$/,
+  /^(?:미역|파래|오이|무)무침?$/,
+  // 장아찌·절임류
+  /장아찌/, /절임/,
+  // 소스·드레싱·양념
+  /소스$/, /드레싱$/, /양념$/, /고추장$/, /된장$/, /간장$/,
+  // 음료·후식
+  /^(?:물|우유|두유|요구르트|요플레|주스|음료)$/,
+  /^후식$/, /^디저트$/,
+];
+
+function isSideDish(name) {
+  const n = name.trim();
+  return SIDE_DISH_PATTERNS.some(p => p.test(n));
+}
+
 function analyzeFrequency(allMenus) {
-  // { mealType → { menuName → count } }
+  // { mealType → { menuName → count } } — 메인 메뉴만 집계
   const freq = { breakfast:{}, lunchA:{}, lunchB:{}, dinner:{} };
   for (const wk of Object.values(allMenus)) {
     for (const day of (wk.days || [])) {
       for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
         for (const item of (day[mt] || [])) {
           const key = item.trim();
-          if (!key) continue;
+          if (!key || isSideDish(key)) continue;
           freq[mt][key] = (freq[mt][key] || 0) + 1;
         }
       }
@@ -922,7 +949,7 @@ function analyzeFrequency(allMenus) {
 }
 
 function analyzeDuplicates(allMenus) {
-  // { "YYYY-MM" → { mealType → { menuName → count } } }
+  // { "YYYY-MM" → { mealType → { menuName → count } } } — 메인 메뉴만 집계
   const dups = {};
   for (const wk of Object.values(allMenus)) {
     const month = wk.month;
@@ -932,7 +959,7 @@ function analyzeDuplicates(allMenus) {
       for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
         for (const item of (day[mt] || [])) {
           const key = item.trim();
-          if (!key) continue;
+          if (!key || isSideDish(key)) continue;
           dups[month][mt][key] = (dups[month][mt][key] || 0) + 1;
         }
       }
@@ -1107,13 +1134,18 @@ function renderAnalysis() {
   const feedback = generateFeedback(allMenus, freq, dups, pref);
   const hasPref = Object.keys(pref).length >= 3;
 
-  // Summary KPIs
+  // Summary KPIs — 메인 메뉴 기준 (일반 반찬류 제외)
   let totalDays = 0, totalMenuItems = 0, uniqueMenus = new Set();
   for (const wk of Object.values(allMenus)) {
     for (const day of (wk.days||[])) {
       totalDays++;
       for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
-        for (const item of (day[mt]||[])) { totalMenuItems++; uniqueMenus.add(item.trim()); }
+        for (const item of (day[mt]||[])) {
+          const k = item.trim();
+          if (!k || isSideDish(k)) continue;
+          totalMenuItems++;
+          uniqueMenus.add(k);
+        }
       }
     }
   }
@@ -1126,8 +1158,8 @@ function renderAnalysis() {
     <div class="kpi-mini-grid">
       <div class="kpi-mini"><div class="lbl">등록 주차</div><div class="val">${Object.keys(allMenus).length}<span class="unit">주</span></div></div>
       <div class="kpi-mini"><div class="lbl">등록 일수</div><div class="val">${totalDays}<span class="unit">일</span></div></div>
-      <div class="kpi-mini"><div class="lbl">고유 메뉴</div><div class="val">${uniqueMenus.size}<span class="unit">종</span></div></div>
-      <div class="kpi-mini"><div class="lbl">중복 메뉴</div><div class="val" style="color:${dupCount>0?'var(--bad)':'var(--good)'}">
+      <div class="kpi-mini"><div class="lbl">고유 메뉴 <span style="font-weight:400;color:var(--muted);font-size:10px">(메인)</span></div><div class="val">${uniqueMenus.size}<span class="unit">종</span></div></div>
+      <div class="kpi-mini"><div class="lbl">중복 메뉴 <span style="font-weight:400;color:var(--muted);font-size:10px">(메인)</span></div><div class="val" style="color:${dupCount>0?'var(--bad)':'var(--good)'}">
         ${dupCount}<span class="unit">건</span></div></div>
     </div>
 
@@ -1163,15 +1195,18 @@ function showTab(name, btn) {
 /* ── 빈도 탭 ── */
 function buildFreqTab(freq) {
   return `
+    <div class="note-blue" style="margin-bottom:14px">
+      밥·김치류 등 기본 제공 반찬은 제외하고 <strong>메인 메뉴 중심</strong>으로 집계합니다.
+    </div>
     <div class="row cols-2">
       <div class="card">
         <h3>조식 · 석식 메뉴 빈도 Top 10</h3>
-        <div class="desc">등록된 전체 기간 기준</div>
+        <div class="desc">등록된 전체 기간 기준 · 메인 메뉴 기준</div>
         <div class="chart-wrap tall"><canvas id="freqChart1"></canvas></div>
       </div>
       <div class="card">
         <h3>중식 A · B 메뉴 빈도 Top 10</h3>
-        <div class="desc">등록된 전체 기간 기준</div>
+        <div class="desc">등록된 전체 기간 기준 · 메인 메뉴 기준</div>
         <div class="chart-wrap tall"><canvas id="freqChart2"></canvas></div>
       </div>
     </div>
@@ -1264,7 +1299,7 @@ function buildDupTab(dups) {
   const months = Object.keys(dups).sort().reverse();
   if (!months.length) return '<div class="empty-state"><div class="icon">✅</div><p>중복 메뉴가 없습니다.</p></div>';
 
-  let html = '';
+  let html = '<div class="note-blue" style="margin-bottom:14px">밥·김치류 등 기본 제공 반찬은 제외하고 <strong>메인 메뉴 기준</strong>으로 집계합니다.</div>';
   for (const month of months) {
     const [y,m] = month.split('-');
     const label = `${y}년 ${+m}월`;
