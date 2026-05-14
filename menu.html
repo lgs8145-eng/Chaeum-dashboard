@@ -356,23 +356,66 @@ const DAYS_KO = ['일','월','화','수','목','금','토'];
 const MEAL_LABELS = { breakfast:'조식', lunchA:'중식 A', lunchB:'중식 B', dinner:'석식' };
 const MEAL_COLORS = { breakfast:'#f59e0b', lunchA:'#3b82f6', lunchB:'#8b5cf6', dinner:'#10b981' };
 
+// ── 데이터 레이어: localStorage(캐시) + Redis(서버 권위) ───────
+// localStorage는 세션 내 빠른 접근용. 서버가 항상 최신 상태 기준.
+
 function loadMenus() {
   try { return JSON.parse(localStorage.getItem(MENU_KEY) || '{}'); } catch { return {}; }
+}
+
+function _saveLocal(all) {
+  localStorage.setItem(MENU_KEY, JSON.stringify(all));
+}
+
+// 서버 → localStorage 동기화 (페이지 로드·포커스 시 호출)
+async function syncFromServer() {
+  try {
+    const res = await fetch('/api/menus?action=load');
+    if (!res.ok) return;
+    const { ok, data } = await res.json();
+    if (ok && data && typeof data === 'object') {
+      _saveLocal(data);
+    }
+  } catch { /* Redis 불가 시 localStorage 그대로 사용 */ }
+}
+
+// 서버에 주차 저장 (백그라운드 — UI 블로킹 없음)
+async function _pushWeekToServer(weekKey, weekData) {
+  try {
+    await fetch('/api/menus?action=save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ weekKey, weekData }),
+    });
+  } catch {}
+}
+
+// 서버에서 주차 삭제 (백그라운드)
+async function _deleteWeekFromServer(weekKey) {
+  try {
+    await fetch('/api/menus?action=delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ weekKey }),
+    });
+  } catch {}
 }
 
 function saveMenuWeek(weekKey, data) {
   const all = loadMenus();
   all[weekKey] = data;
-  localStorage.setItem(MENU_KEY, JSON.stringify(all));
+  _saveLocal(all);
+  _pushWeekToServer(weekKey, data); // 서버 동기화 (비동기)
 }
 
 function deleteMenuWeek(weekKey) {
   const all = loadMenus();
   delete all[weekKey];
-  localStorage.setItem(MENU_KEY, JSON.stringify(all));
+  _saveLocal(all);
+  _deleteWeekFromServer(weekKey); // 서버 동기화 (비동기)
 }
 
-function deleteAllMenus() {
+async function deleteAllMenus() {
   const all = loadMenus();
   const count = Object.keys(all).length;
   if (!count) { showResult('error', '삭제할 식단표가 없습니다.'); return; }
@@ -381,6 +424,9 @@ function deleteAllMenus() {
   showResult('success', `식단표 ${count}주차가 모두 삭제되었습니다.`);
   renderWeekList();
   renderAnalysis();
+  try {
+    await fetch('/api/menus?action=delete-all', { method: 'POST' });
+  } catch {}
 }
 
 function loadAllMealRecords() {
@@ -1875,6 +1921,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btn = document.getElementById('deleteAllBtn');
     if (btn) btn.style.display = '';
   }
+
+  // 서버(Redis)에서 최신 데이터 로드 후 렌더
+  await syncFromServer();
+  renderWeekList();
+  renderAnalysis();
+});
+
+// 탭 전환으로 다시 포커스 될 때 서버 데이터 재동기화
+// → PC-A에서 업로드한 내용을 PC-B가 탭 활성화 시점에 자동 반영
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) return;
+  await syncFromServer();
   renderWeekList();
   renderAnalysis();
 });
