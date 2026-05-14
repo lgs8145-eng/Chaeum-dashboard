@@ -130,6 +130,18 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .kpi-mini .lbl{font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:500}
 .kpi-mini .val{font-size:20px;font-weight:700}
 .kpi-mini .unit{font-size:12px;color:var(--muted);margin-left:2px}
+.kpi-mini.clickable{cursor:pointer;transition:box-shadow .15s,border-color .15s,transform .12s}
+.kpi-mini.clickable:hover{border-color:var(--primary);box-shadow:0 2px 10px rgba(59,130,246,.18);transform:translateY(-1px)}
+.kpi-mini.clickable .lbl::after{content:" ↗";font-size:9px;opacity:.5}
+/* KPI 상세 모달 테이블 */
+.kpi-detail-table{width:100%;border-collapse:collapse;font-size:13px}
+.kpi-detail-table th{background:#eff6ff;color:#1e40af;font-weight:600;padding:8px 12px;
+  text-align:left;border:1px solid #bfdbfe;font-size:12px;white-space:nowrap}
+.kpi-detail-table td{padding:8px 12px;border:1px solid var(--line);vertical-align:middle}
+.kpi-detail-table tbody tr:hover{background:#f8fafc}
+.kpi-detail-section{margin-bottom:18px}
+.kpi-detail-section h4{font-size:13px;font-weight:700;margin:0 0 8px;
+  padding:6px 10px;background:#f1f5f9;border-radius:6px;color:var(--ink)}
 
 /* Empty state */
 .empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
@@ -292,6 +304,17 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
       <button class="btn btn-danger btn-sm" id="detailDeleteBtn">🗑 삭제</button>
       <button class="btn btn-ghost btn-sm" onclick="closeDetailModal()">닫기</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ KPI 상세 모달 (고유메뉴 / 중복메뉴) ══ -->
+<div class="modal-overlay" id="kpiDetailModal" onclick="if(event.target===this)this.classList.remove('show')">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <h2 id="kpiDetailTitle">상세 보기</h2>
+      <button class="modal-close" onclick="document.getElementById('kpiDetailModal').classList.remove('show')">✕</button>
+    </div>
+    <div class="modal-body" id="kpiDetailBody" style="padding:20px 22px;max-height:65vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -1225,6 +1248,9 @@ function checkCrossData(wkData) {
 ══════════════════════════════════════════════════ */
 let _freqChart = null;
 let _prefChart = null;
+let _lastFreq = null;
+let _lastDups = null;
+let _lastAllMenus = null;
 
 function renderAnalysis() {
   // 현재 활성 탭 이름 저장 → 재렌더 후 복원
@@ -1242,6 +1268,7 @@ function renderAnalysis() {
 
   const freq = analyzeFrequency(allMenus);
   const dups = analyzeDuplicates(allMenus);
+  _lastFreq = freq; _lastDups = dups; _lastAllMenus = allMenus;
   const { map: dailyMap, monthAvg } = buildDailyMap();
   const pref = analyzePreference(allMenus, dailyMap, monthAvg);
   const feedback = generateFeedback(allMenus, freq, dups, pref);
@@ -1271,9 +1298,16 @@ function renderAnalysis() {
     <div class="kpi-mini-grid">
       <div class="kpi-mini"><div class="lbl">등록 주차</div><div class="val">${Object.keys(allMenus).length}<span class="unit">주</span></div></div>
       <div class="kpi-mini"><div class="lbl">등록 일수</div><div class="val">${totalDays}<span class="unit">일</span></div></div>
-      <div class="kpi-mini"><div class="lbl">고유 메뉴 <span style="font-weight:400;color:var(--muted);font-size:10px">(메인)</span></div><div class="val">${uniqueMenus.size}<span class="unit">종</span></div></div>
-      <div class="kpi-mini"><div class="lbl">중복 메뉴 <span style="font-weight:400;color:var(--muted);font-size:10px">(메인)</span></div><div class="val" style="color:${dupCount>0?'var(--bad)':'var(--good)'}">
-        ${dupCount}<span class="unit">건</span></div></div>
+      <div class="kpi-mini clickable" onclick="showKpiDetail('unique')">
+        <div class="lbl">고유 메뉴 <span style="font-weight:400;color:var(--muted);font-size:10px">(메인)</span></div>
+        <div class="val">${uniqueMenus.size}<span class="unit">종</span></div>
+      </div>
+      <div class="kpi-mini clickable" onclick="showKpiDetail('dup')">
+        <div class="lbl">중복 메뉴 <span style="font-weight:400;color:var(--muted);font-size:10px">(메인)</span></div>
+        <div class="val" style="color:${dupCount>0?'var(--bad)':'var(--good)'}">
+          ${dupCount}<span class="unit">건</span>
+        </div>
+      </div>
     </div>
 
     ${buildExclBar()}
@@ -1323,6 +1357,78 @@ function showTab(name, btn) {
   if (name === 'pref' && _prefChart) {
     requestAnimationFrame(() => _prefChart.resize());
   }
+}
+
+/* ── KPI 상세 모달 ── */
+function _esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showKpiDetail(type) {
+  if (!_lastFreq || !_lastDups) return;
+
+  const MEAL_LABEL = { breakfast:'조식', lunchA:'중식 A', lunchB:'중식 B', dinner:'석식' };
+  const titleEl = document.getElementById('kpiDetailTitle');
+  const bodyEl  = document.getElementById('kpiDetailBody');
+  if (!titleEl || !bodyEl) return;
+
+  if (type === 'unique') {
+    titleEl.textContent = '고유 메뉴 상세 — 식사 유형별';
+    let html = '';
+    for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+      const label = MEAL_LABEL[mt];
+      const entries = Object.entries(_lastFreq[mt] || {}).sort(function(a,b){ return b[1]-a[1]; });
+      if (!entries.length) continue;
+      const total = entries.reduce(function(s,e){ return s+e[1]; }, 0);
+      let rows = '';
+      for (let i = 0; i < entries.length; i++) {
+        const n = entries[i][0], c = entries[i][1];
+        const pct = total ? Math.round(c/total*100) : 0;
+        rows += '<tr><td>' + _esc(n) + '</td>'
+              + '<td style="text-align:right">' + c + '회</td>'
+              + '<td style="text-align:right">' + pct + '%</td></tr>';
+      }
+      html += '<div class="kpi-detail-section">'
+            + '<h4>' + label + ' — ' + entries.length + '종</h4>'
+            + '<table class="kpi-detail-table"><thead><tr>'
+            + '<th>메뉴명</th><th style="text-align:right">등장 횟수</th><th style="text-align:right">비율</th>'
+            + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+    bodyEl.innerHTML = html || '<p style="color:var(--muted)">분석할 메인 메뉴가 없습니다.</p>';
+
+  } else if (type === 'dup') {
+    titleEl.textContent = '중복 메뉴 상세 — 월별 동월 2회+ 등장';
+    const dupMonths = Object.entries(_lastDups).sort(function(a,b){ return a[0].localeCompare(b[0]); });
+    let html = '';
+    for (let d = 0; d < dupMonths.length; d++) {
+      const ym = dupMonths[d][0], mtMap = dupMonths[d][1];
+      const rows = [];
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        const counts = mtMap[mt] || {};
+        for (const name of Object.keys(counts)) {
+          if (counts[name] >= 2) rows.push({ mt: mt, name: name, cnt: counts[name] });
+        }
+      }
+      if (!rows.length) continue;
+      rows.sort(function(a,b){ return b.cnt - a.cnt || a.name.localeCompare(b.name); });
+      const parts = ym.split('-');
+      const y = parts[0], m = parts[1];
+      let rowHtml = '';
+      for (let r = 0; r < rows.length; r++) {
+        rowHtml += '<tr><td><strong>' + _esc(rows[r].name) + '</strong></td>'
+                 + '<td style="color:var(--muted)">' + (MEAL_LABEL[rows[r].mt] || rows[r].mt) + '</td>'
+                 + '<td style="text-align:right;color:var(--bad);font-weight:600">' + rows[r].cnt + '회</td></tr>';
+      }
+      html += '<div class="kpi-detail-section">'
+            + '<h4>' + y + '년 ' + (+m) + '월 — ' + rows.length + '건</h4>'
+            + '<table class="kpi-detail-table"><thead><tr>'
+            + '<th>메뉴명</th><th>식사 유형</th><th style="text-align:right">동월 등장 횟수</th>'
+            + '</tr></thead><tbody>' + rowHtml + '</tbody></table></div>';
+    }
+    bodyEl.innerHTML = html || '<p style="color:var(--good);font-weight:500">동월 중복 메인 메뉴가 없습니다.</p>';
+  }
+
+  document.getElementById('kpiDetailModal').classList.add('show');
 }
 
 /* ── 빈도 탭 ── */
