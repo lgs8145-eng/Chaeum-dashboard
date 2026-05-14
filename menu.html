@@ -450,10 +450,11 @@ function excelSerialToISO(serial) {
 
 function cellToISO(c, refYear) {
   if (!c) return null;
-  // SheetJS cellDates:true 로 이미 Date 객체로 변환된 경우 (UTC로 추출)
+  // SheetJS cellDates:true → "로컬 자정" Date 생성 (KST 기준 맞음)
+  // UTC 추출 시 -9h로 전날 날짜가 되므로 반드시 로컬 메서드 사용
   if (c.t === 'd') {
     const d = c.v;
-    return toIso(d.getUTCFullYear(), d.getUTCMonth()+1, d.getUTCDate());
+    return toIso(d.getFullYear(), d.getMonth()+1, d.getDate());
   }
   // 숫자 → Excel 시리얼 날짜 (30000 이상 = 1982년 이후 보장)
   if (typeof c.v === 'number') return excelSerialToISO(c.v);
@@ -662,9 +663,103 @@ function emptyDay(iso) {
   return { date: iso, dayLabel: isoToKorean(iso), breakfast: [], lunchA: [], lunchB: [], dinner: [] };
 }
 
+// ── 헥토 서식 전용 파서 ────────────────────────────────────────
+// 감지 조건: col 0 = "구분" (날짜 헤더 행) + 다음 행에 "kcal" 열 존재
+// 날짜 열: 3, 5, 7, 9, 11 (헥토 고정 서식)
+// 식사 구분: col 0 (조식/중식/석식) + col 1 (A코너/B코너/PLUS코너)
+function parseHectoFormat(ws, range, refYear) {
+  const merges = ws['!merges'] || [];
+
+  function effectiveCell(r, c) {
+    const direct = ws[XLSX.utils.encode_cell({r, c})];
+    if (direct) return direct;
+    for (const mg of merges) {
+      if (r >= mg.s.r && r <= mg.e.r && c >= mg.s.c && c <= mg.e.c) {
+        return ws[XLSX.utils.encode_cell({r: mg.s.r, c: mg.s.c})];
+      }
+    }
+    return null;
+  }
+
+  // 헤더 행 탐색: col 0 = "구분" AND 근방 행에 "kcal" 열 존재
+  let headerRow = -1;
+  for (let r = 0; r <= Math.min(range.e.r, 15); r++) {
+    const c0 = effectiveCell(r, 0);
+    if (!c0 || String(c0.v || '').trim() !== '구분') continue;
+    outer: for (let nr = r; nr <= r + 2 && nr <= range.e.r; nr++) {
+      for (let nc = 2; nc <= Math.min(range.e.c, 14); nc++) {
+        const ncell = ws[XLSX.utils.encode_cell({r: nr, c: nc})];
+        if (ncell && /kcal/i.test(String(ncell.v || ''))) {
+          headerRow = r;
+          break outer;
+        }
+      }
+    }
+    if (headerRow >= 0) break;
+  }
+  if (headerRow < 0) return null;
+
+  // 날짜 추출: 홀수 열 3,5,7,9,11 (헥토 서식 고정)
+  const DATE_COLS = [3, 5, 7, 9, 11];
+  const colDate = {};
+  for (const ci of DATE_COLS) {
+    const cell = effectiveCell(headerRow, ci);
+    if (!cell) continue;
+    const iso = cellToISO(cell, refYear);
+    if (!iso) continue;
+    const dow = isoToUTC(iso).getUTCDay();
+    if (dow >= 1 && dow <= 5) colDate[ci] = iso;
+  }
+  if (!Object.keys(colDate).length) return null;
+
+  // 데이터 파싱: headerRow+2 시작 (headerRow+1 = 메뉴명/kcal 부헤더)
+  const days = {};
+  let currentMainType = null; // 'breakfast' | 'jungshik' | 'dinner'
+  let currentSubCat   = '';   // col 1 텍스트
+
+  for (let r = headerRow + 2; r <= range.e.r; r++) {
+    const ec0 = effectiveCell(r, 0);
+    const ec1 = effectiveCell(r, 1);
+    const v0 = String(ec0?.v || '').trim();
+    const v1 = String(ec1?.v || '').trim();
+
+    // 푸터 감지 (원산지, 비고, ※) → 파싱 종료
+    if (/원산지|비고|※|합계/.test(v0)) break;
+
+    // col 0: 식사 대분류 업데이트
+    if (/조식|아침/.test(v0))       currentMainType = 'breakfast';
+    else if (/중식|점심/.test(v0))  currentMainType = 'jungshik';
+    else if (/석식|저녁/.test(v0))  currentMainType = 'dinner';
+
+    // col 1: 세부 코너 업데이트
+    if (v1) currentSubCat = v1;
+
+    if (!currentMainType) continue;
+
+    // 식사 타입 결정: 중식 B코너 → lunchB, 그 외 → lunchA
+    let mt;
+    if (currentMainType === 'breakfast') mt = 'breakfast';
+    else if (currentMainType === 'dinner') mt = 'dinner';
+    else mt = /B코너|B코스/i.test(currentSubCat) ? 'lunchB' : 'lunchA';
+
+    // 각 날짜 열 메뉴 수집 (kcal 열은 짝수 열이라 DATE_COLS에 없음)
+    for (const [ci, iso] of Object.entries(colDate)) {
+      const menuCell = ws[XLSX.utils.encode_cell({r, c: +ci})];
+      if (!menuCell) continue;
+      const items = splitMenuItems(menuCell.v);
+      if (!items.length) continue;
+      if (!days[iso]) days[iso] = emptyDay(iso);
+      days[iso][mt].push(...items);
+    }
+  }
+
+  return Object.keys(days).length ? days : null;
+}
+
 function parseSheetWeek(ws, refYear) {
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-  let days = parseGridFormat(ws, range, refYear);
+  let days = parseHectoFormat(ws, range, refYear);       // 헥토 서식 우선
+  if (!days) days = parseGridFormat(ws, range, refYear);
   if (!days) days = parseColumnarFormat(ws, range, refYear);
   if (!days || !Object.keys(days).length) return null;
 
