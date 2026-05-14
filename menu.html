@@ -450,25 +450,37 @@ function excelSerialToISO(serial) {
 
 function cellToISO(c, refYear) {
   if (!c) return null;
-  // SheetJS cellDates:true → "로컬 자정" Date 생성 (KST 기준 맞음)
-  // UTC 추출 시 -9h로 전날 날짜가 되므로 반드시 로컬 메서드 사용
+
+  // t:'d' 셀: SheetJS cellDates:true 시 KST 23:59:08로 Date 생성 →
+  // getDate()가 하루 전날(일요일)을 반환하는 버그 존재.
+  // c.w(Excel 포맷 텍스트 "1 월 19일 (Mon)")가 정확한 날짜를 담고 있으므로 c.w 우선 파싱.
   if (c.t === 'd') {
+    if (c.w) {
+      const s = String(c.w).trim();
+      // YYYY-MM-DD 전체 연도 포함 형식
+      let m = s.match(/(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/);
+      if (m) return toIso(+m[1], +m[2], +m[3]);
+      // "1 월 19일 (Mon)", "5월12일" — 구분자 앞 공백 허용
+      m = s.match(/^(\d{1,2})\s*[\/월\.]\s*(\d{1,2})/);
+      if (m && refYear) return toIso(refYear, +m[1], +m[2]);
+    }
+    // fallback: Date 객체 로컬 메서드 (c.w 파싱 실패 시)
     const d = c.v;
     return toIso(d.getFullYear(), d.getMonth()+1, d.getDate());
   }
+
   // 숫자 → Excel 시리얼 날짜 (30000 이상 = 1982년 이후 보장)
   if (typeof c.v === 'number') return excelSerialToISO(c.v);
 
   // 문자열 파싱 — c.v 우선, c.w(SheetJS 포맷 텍스트) 병행 시도
-  // [$-ko-KR]m "월" d"일" (ddd) → "5월 12일 (월)" 형태 포함
   for (const raw of [c.v, c.w]) {
     if (!raw) continue;
     const s = String(raw).trim();
     // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
     let m = s.match(/(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/);
     if (m) return toIso(+m[1], +m[2], +m[3]);
-    // "5월 12일 (월)", "5월12일", "5/12", "5.12" — \s* 로 월/일 사이 공백 허용
-    m = s.match(/^(\d{1,2})[\/월\.]\s*(\d{1,2})/);
+    // "5월 12일", "5월12일", "5/12", "5.12", "1 월 19일" — 구분자 앞 공백 허용
+    m = s.match(/^(\d{1,2})\s*[\/월\.]\s*(\d{1,2})/);
     if (m && refYear) return toIso(refYear, +m[1], +m[2]);
   }
   return null;
