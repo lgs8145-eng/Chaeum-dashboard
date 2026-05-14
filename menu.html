@@ -699,16 +699,20 @@ function parseHectoFormat(ws, range, refYear) {
   }
   if (headerRow < 0) return null;
 
-  // 날짜 추출: 홀수 열 3,5,7,9,11 (헥토 서식 고정)
-  const DATE_COLS = [3, 5, 7, 9, 11];
+  // 날짜 열 동적 탐지: 헤더 행의 직접 셀만 검사 (병합 복제 제외)
+  // → 열 위치 변동 시에도 금요일 포함 월~금 전체 정확히 수집
   const colDate = {};
-  for (const ci of DATE_COLS) {
-    const cell = effectiveCell(headerRow, ci);
-    if (!cell) continue;
-    const iso = cellToISO(cell, refYear);
+  const usedIsos = new Set();
+  for (let ci = 0; ci <= range.e.c; ci++) {
+    const directCell = ws[XLSX.utils.encode_cell({r: headerRow, c: ci})];
+    if (!directCell) continue;
+    const iso = cellToISO(directCell, refYear);
     if (!iso) continue;
     const dow = isoToUTC(iso).getUTCDay();
-    if (dow >= 1 && dow <= 5) colDate[ci] = iso;
+    if (dow >= 1 && dow <= 5 && !usedIsos.has(iso)) {
+      colDate[ci] = iso;
+      usedIsos.add(iso);
+    }
   }
   if (!Object.keys(colDate).length) return null;
 
@@ -723,8 +727,10 @@ function parseHectoFormat(ws, range, refYear) {
     const v0 = String(ec0?.v || '').trim();
     const v1 = String(ec1?.v || '').trim();
 
-    // 푸터 감지 (원산지, 비고, ※) → 파싱 종료
+    // 푸터·복합구분 행 감지 → 파싱 종료
+    // "조·중·석 ALL": 라면 등 상시 메뉴가 석식으로 잘못 분류되는 오류 방지
     if (/원산지|비고|※|합계/.test(v0)) break;
+    if (/조.중.석/.test(v0)) break;
 
     // col 0: 식사 대분류 업데이트
     if (/조식|아침/.test(v0))       currentMainType = 'breakfast';
@@ -736,13 +742,14 @@ function parseHectoFormat(ws, range, refYear) {
 
     if (!currentMainType) continue;
 
-    // 식사 타입 결정: 중식 B코너 → lunchB, 그 외 → lunchA
+    // 식사 타입 결정
+    // "B 코너"/"B코너"/"B 코스" 등 공백 유무 모두 lunchB 처리 (실제 파일: "B 코너")
     let mt;
     if (currentMainType === 'breakfast') mt = 'breakfast';
     else if (currentMainType === 'dinner') mt = 'dinner';
-    else mt = /B코너|B코스/i.test(currentSubCat) ? 'lunchB' : 'lunchA';
+    else mt = /B\s*코너|B\s*코스/i.test(currentSubCat) ? 'lunchB' : 'lunchA';
 
-    // 각 날짜 열 메뉴 수집 (kcal 열은 짝수 열이라 DATE_COLS에 없음)
+    // 각 날짜 열 메뉴 수집 (kcal 짝수 열은 colDate에 미포함)
     for (const [ci, iso] of Object.entries(colDate)) {
       const menuCell = ws[XLSX.utils.encode_cell({r, c: +ci})];
       if (!menuCell) continue;
