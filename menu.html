@@ -184,6 +184,42 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
   .header{flex-direction:column;align-items:flex-start}
 }
 @media(max-width:560px){.kpi-mini-grid{grid-template-columns:1fr 1fr}}
+
+/* ── AI 심층 분석 탭 ── */
+.ai-range-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px;
+  padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid var(--line)}
+.ai-range-bar label{font-size:13px;font-weight:600;white-space:nowrap}
+.ai-range-bar select{border:1px solid var(--line);border-radius:7px;padding:5px 10px;
+  font-size:13px;font-family:inherit;background:#fff;outline:none;cursor:pointer}
+.ai-loading{text-align:center;padding:48px 20px;color:var(--muted)}
+.ai-loading .ai-icon{font-size:36px;animation:aipulse 1.4s ease-in-out infinite}
+@keyframes aipulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:.75}}
+.ai-loading .ai-title{font-size:15px;font-weight:700;color:var(--ink);margin:10px 0 5px}
+.ai-result-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;
+  gap:6px;padding:10px 14px;background:#eff6ff;border-radius:8px;margin-bottom:16px;
+  font-size:13px;border:1px solid #bfdbfe}
+/* AI 마크다운 렌더링 */
+.ai-md h3.ai-h3{font-size:15px;font-weight:700;margin:18px 0 8px;color:var(--ink);
+  padding-bottom:5px;border-bottom:2px solid var(--primary)}
+.ai-md h4.ai-h4{font-size:14px;font-weight:600;margin:14px 0 7px;color:#1e40af}
+.ai-md hr.ai-hr{border:none;border-top:1px solid var(--line);margin:16px 0}
+.ai-md .ai-table-wrap{overflow-x:auto;margin:8px 0 14px}
+.ai-md table.ai-table{width:100%;border-collapse:collapse;font-size:13px}
+.ai-md table.ai-table th{background:#eff6ff;font-weight:600;color:#1e40af;padding:8px 12px;
+  border:1px solid #bfdbfe;font-size:12px;text-align:left;text-transform:none;letter-spacing:0}
+.ai-md table.ai-table td{padding:8px 12px;border:1px solid var(--line);font-size:13px;text-align:left}
+.ai-md table.ai-table tbody tr:hover{background:#f8fafc}
+.ai-md .ai-p{font-size:13.5px;line-height:1.7;margin:5px 0}
+.ai-md ul.ai-list{padding-left:20px;margin:6px 0}
+.ai-md ul.ai-list li{font-size:13.5px;line-height:1.7;margin-bottom:3px}
+.ai-md ul.ai-checklist{list-style:none;padding-left:0;margin:6px 0}
+.ai-md ul.ai-checklist li{display:flex;align-items:flex-start;gap:8px;
+  font-size:13.5px;line-height:1.7;margin-bottom:5px;
+  padding:7px 12px;border-radius:7px;background:#f8fafc;border:1px solid var(--line)}
+.ai-md ul.ai-checklist li.done{background:#f0fdf4;border-color:#bbf7d0}
+.ai-md .check-box{font-size:15px;margin-top:1px;flex-shrink:0}
+.ai-note-limit{background:#fef3c7;border:1px solid #fde68a;border-left:3px solid var(--warn);
+  padding:8px 12px;border-radius:6px;font-size:12px;color:#78350f;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -1101,6 +1137,7 @@ function renderAnalysis() {
       <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
       ${hasPref ? '<button class="tab-item" onclick="showTab(\'pref\',this)">⭐ 선호도 분석</button>' : ''}
       <button class="tab-item" onclick="showTab('feedback',this)">💡 관리자 피드백</button>
+      <button class="tab-item" onclick="showTab('ai',this)">🤖 AI 심층 분석</button>
     </div>
 
     <div class="tab-content active" id="tab-freq">${buildFreqTab(freq)}</div>
@@ -1108,6 +1145,7 @@ function renderAnalysis() {
     <div class="tab-content" id="tab-comp">${buildCompTab(allMenus, freq)}</div>
     ${hasPref ? `<div class="tab-content" id="tab-pref">${buildPrefTab(pref, Object.keys(pref).length)}</div>` : ''}
     <div class="tab-content" id="tab-feedback">${buildFeedbackTab(feedback)}</div>
+    <div class="tab-content" id="tab-ai">${buildAITab(allMenus)}</div>
   `;
 
   renderFreqCharts(freq);
@@ -1337,6 +1375,253 @@ function buildFeedbackTab(feedback) {
     <div class="feedback-item ${cls[f.level]}">
       ${icon[f.level]} ${f.text}
     </div>`).join('');
+}
+
+/* ══════════════════════════════════════════════════
+   AI 심층 분석 탭
+══════════════════════════════════════════════════ */
+function buildAITab(allMenus) {
+  const keys = Object.keys(allMenus).sort();
+  if (!keys.length) return '<div class="note-blue">식단 데이터를 등록하면 AI 심층 분석을 실행할 수 있습니다.</div>';
+
+  const opts = keys.map(k => {
+    const lbl = allMenus[k].label || k;
+    return `<option value="${k}">${lbl}</option>`;
+  }).join('');
+  const lastOpt = keys.map(k => {
+    const lbl = allMenus[k].label || k;
+    const sel = k === keys[keys.length-1] ? ' selected' : '';
+    return `<option value="${k}"${sel}>${lbl}</option>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <h3 style="margin-bottom:4px">🤖 AI 심층 분석</h3>
+      <div class="desc" style="margin-bottom:14px">
+        단체급식 전문가 AI가 3개 Layer(반복주기·구성 적정성·운영 효율성)를 분석합니다.<br>
+        분석 범위를 지정한 뒤 실행하세요. Anthropic API를 사용하며 10~25초 소요됩니다.
+      </div>
+
+      <div class="ai-range-bar">
+        <label>분석 기간</label>
+        <select id="aiFromWeek">${opts}</select>
+        <span style="font-size:13px;color:var(--muted)">~</span>
+        <select id="aiToWeek">${lastOpt}</select>
+        <span id="aiWeekCount" style="font-size:12px;color:var(--muted)"></span>
+        <button class="btn btn-primary" onclick="runAIAnalysis()" id="aiRunBtn">🤖 분석 실행</button>
+      </div>
+
+      <div id="aiAnalysisResult"></div>
+    </div>`;
+}
+
+// 주차 선택 변경 시 카운트 업데이트
+function updateAIWeekCount() {
+  const from = document.getElementById('aiFromWeek')?.value;
+  const to   = document.getElementById('aiToWeek')?.value;
+  const cnt  = document.getElementById('aiWeekCount');
+  if (!from || !to || !cnt) return;
+  const all = loadMenus();
+  const n = Object.keys(all).sort().filter(k => k >= from && k <= to).length;
+  cnt.textContent = n ? `${n}주 선택` : '범위 오류';
+}
+
+// 메뉴 데이터 → AI 전송용 텍스트 빌드
+function buildMenuText(weekKeys, allMenus) {
+  const MK = { breakfast:'조식', lunchA:'중식A(A코너)', lunchB:'중식B(B코너)', dinner:'석식' };
+  const freq = { breakfast:{}, lunchA:{}, lunchB:{}, dinner:{} };
+  const cov  = { breakfast:0,  lunchA:0,  lunchB:0,  dinner:0  };
+  let totalDays = 0;
+
+  for (const wk of weekKeys) {
+    for (const day of (allMenus[wk].days || [])) {
+      totalDays++;
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        const items = day[mt] || [];
+        if (items.length) cov[mt]++;
+        for (const item of items) freq[mt][item] = (freq[mt][item]||0)+1;
+      }
+    }
+  }
+
+  const lines = [`총 ${totalDays}일 (${weekKeys.length}주) 데이터\n`];
+
+  // 통계 요약
+  lines.push('[끼니별 제공 현황]');
+  for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+    const uniq = Object.keys(freq[mt]).length;
+    const top5 = Object.entries(freq[mt]).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    lines.push(`${MK[mt]}: ${cov[mt]}/${totalDays}일 제공, 고유 ${uniq}종`);
+    if (top5.length) lines.push(`  상위메뉴: ${top5.map(([n,c])=>n+'('+c+'회)').join(', ')}`);
+  }
+
+  // 최근 최대 8주 상세 (토큰 절감)
+  const detailKeys = weekKeys.length > 8 ? weekKeys.slice(-8) : weekKeys;
+  if (detailKeys.length < weekKeys.length)
+    lines.push(`\n[주별 상세 — 최근 ${detailKeys.length}주 표시]`);
+  else
+    lines.push('\n[주별 상세]');
+
+  for (const wk of detailKeys) {
+    const data = allMenus[wk];
+    lines.push(`\n${data.label || wk}:`);
+    for (const day of (data.days || [])) {
+      const parts = [];
+      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+        const items = day[mt] || [];
+        if (items.length) parts.push(`${MK[mt]}[${items.join('/')}]`);
+      }
+      if (parts.length) lines.push(`  ${day.dayLabel||day.date}: ${parts.join(' | ')}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+// AI 분석 실행
+async function runAIAnalysis() {
+  const fromWeek = document.getElementById('aiFromWeek')?.value;
+  const toWeek   = document.getElementById('aiToWeek')?.value;
+  const btn      = document.getElementById('aiRunBtn');
+  const resultDiv = document.getElementById('aiAnalysisResult');
+  if (!fromWeek || !toWeek || !resultDiv) return;
+
+  const allMenus = loadMenus();
+  const keys = Object.keys(allMenus).sort().filter(k => k >= fromWeek && k <= toWeek);
+
+  if (!keys.length) {
+    resultDiv.innerHTML = '<div class="note">선택한 기간에 등록된 식단 데이터가 없습니다.</div>';
+    return;
+  }
+
+  const menuText = buildMenuText(keys, allMenus);
+  const firstLbl = allMenus[keys[0]].label || keys[0];
+  const lastLbl  = allMenus[keys[keys.length-1]].label || keys[keys.length-1];
+  const period   = `${firstLbl} ~ ${lastLbl} (${keys.length}주, 약 ${keys.length*5}일)`;
+
+  btn.disabled = true;
+  btn.textContent = '분석 중...';
+  resultDiv.innerHTML = `
+    <div class="ai-loading">
+      <div class="ai-icon">🤖</div>
+      <div class="ai-title">AI 심층 분석 중입니다</div>
+      <div style="font-size:13px">3개 Layer 분석에 10~25초 소요됩니다. 잠시만 기다려주세요.</div>
+    </div>`;
+
+  try {
+    const res = await fetch('/api/analyze-menu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ menuText, period })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'server_error');
+
+    const now = new Date().toLocaleString('ko-KR', { hour12: false });
+    resultDiv.innerHTML = `
+      <div class="ai-result-header">
+        <span>분석 기간: <strong>${period}</strong></span>
+        <span style="color:var(--muted);font-size:12px">AI 분석 완료 · ${now}</span>
+      </div>
+      ${keys.length > 8 ? '<div class="ai-note-limit">⚠ 8주 초과 선택 시 최근 8주 상세 데이터만 분석에 활용됩니다. 전체 기간 통계는 반영됩니다.</div>' : ''}
+      <div class="ai-md">${mdToHtml(data.analysis)}</div>`;
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="upload-result error">분석 실패: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🤖 분석 실행';
+  }
+}
+
+// Markdown → HTML 변환 (AI 출력 전용 미니 렌더러)
+function applyInline(s) {
+  return s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.+?)\*/g, '<em>$1</em>')
+          .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">$1</code>');
+}
+
+function mdToHtml(md) {
+  if (!md) return '';
+  const esc = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines = esc.split('\n');
+  let html = '';
+  let inTable = false;
+  let tableHdrDone = false;
+  let listType = null; // 'ul' | 'check'
+
+  function closeList() {
+    if (!listType) return;
+    html += listType === 'check' ? '</ul>' : '</ul>';
+    listType = null;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // 표
+    if (/^\|/.test(line)) {
+      if (!inTable) {
+        closeList();
+        html += '<div class="ai-table-wrap"><table class="ai-table">';
+        inTable = true;
+        tableHdrDone = false;
+      }
+      if (/^\|[\s\-:|]+\|/.test(line)) { tableHdrDone = true; continue; }
+      const cells = line.split('|').slice(1,-1).map(c => applyInline(c.trim()));
+      const tag = tableHdrDone ? 'td' : 'th';
+      html += '<tr>' + cells.map(c=>`<${tag}>${c}</${tag}>`).join('') + '</tr>';
+      continue;
+    } else if (inTable) {
+      html += '</table></div>';
+      inTable = false;
+    }
+
+    // 헤더
+    if (/^### /.test(line)) {
+      closeList();
+      html += `<h4 class="ai-h4">${applyInline(line.slice(4))}</h4>`;
+      continue;
+    }
+    if (/^## /.test(line)) {
+      closeList();
+      html += `<h3 class="ai-h3">${applyInline(line.slice(3))}</h3>`;
+      continue;
+    }
+
+    // 수평선
+    if (/^---+$/.test(line.trim())) {
+      closeList();
+      html += '<hr class="ai-hr">';
+      continue;
+    }
+
+    // 체크리스트
+    if (/^- \[[ xX]\] /.test(line)) {
+      if (listType !== 'check') { closeList(); html += '<ul class="ai-checklist">'; listType = 'check'; }
+      const done = line[3] !== ' ';
+      html += `<li class="${done?'done':''}"><span class="check-box">${done?'✅':'☐'}</span>${applyInline(line.slice(6))}</li>`;
+      continue;
+    }
+
+    // 목록
+    if (/^[-*] /.test(line)) {
+      if (listType !== 'ul') { closeList(); html += '<ul class="ai-list">'; listType = 'ul'; }
+      html += `<li>${applyInline(line.slice(2))}</li>`;
+      continue;
+    }
+
+    // 목록 닫기
+    if (listType) closeList();
+
+    // 빈 줄
+    if (!line.trim()) { continue; }
+
+    // 본문
+    html += `<p class="ai-p">${applyInline(line)}</p>`;
+  }
+
+  if (inTable) html += '</table></div>';
+  closeList();
+  return html;
 }
 
 /* ══════════════════════════════════════════════════

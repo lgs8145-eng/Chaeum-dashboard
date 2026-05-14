@@ -1,6 +1,7 @@
 {
   "functions": {
-    "api/parse-menu-image.js": { "maxDuration": 10 }
+    "api/parse-menu-image.js": { "maxDuration": 10 },
+    "api/analyze-menu.js":     { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/", "destination": "/login.html" }
