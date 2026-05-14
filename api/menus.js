@@ -87,13 +87,26 @@ module.exports = async (req, res) => {
       return res.status(403).json({ ok: false, error: '관리자 권한이 필요합니다.' });
     }
 
-    // ── POST: 주차 저장 ─────────────────────────────────────────
+    // ── POST: 주차 저장 (단건) ─────────────────────────────────
     if (action === 'save' && req.method === 'POST') {
       const { weekKey, weekData } = req.body || {};
       if (!weekKey || !weekData) return res.status(400).json({ ok: false, error: '파라미터 누락' });
       let all = {};
       try { all = (await rGet(MENUS_KEY)) || {}; } catch {}
       all[weekKey] = weekData;
+      await rSet(MENUS_KEY, all);
+      return res.status(200).json({ ok: true });
+    }
+
+    // ── POST: 다주차 일괄 저장 (Excel 업로드용) ─────────────────
+    // 단건 save를 반복 호출하면 Redis read-modify-write 경합 발생 →
+    // 한 번의 읽기/쓰기로 처리해 원자성 보장
+    if (action === 'save-batch' && req.method === 'POST') {
+      const { weeks } = req.body || {};
+      if (!weeks || typeof weeks !== 'object') return res.status(400).json({ ok: false, error: '파라미터 누락' });
+      let all = {};
+      try { all = (await rGet(MENUS_KEY)) || {}; } catch {}
+      Object.assign(all, weeks);
       await rSet(MENUS_KEY, all);
       return res.status(200).json({ ok: true });
     }
