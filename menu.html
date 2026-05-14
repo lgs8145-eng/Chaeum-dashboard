@@ -1298,11 +1298,11 @@ function renderAnalysis() {
     <div class="kpi-mini-grid">
       <div class="kpi-mini"><div class="lbl">등록 주차</div><div class="val">${Object.keys(allMenus).length}<span class="unit">주</span></div></div>
       <div class="kpi-mini"><div class="lbl">등록 일수</div><div class="val">${totalDays}<span class="unit">일</span></div></div>
-      <div class="kpi-mini clickable" onclick="showKpiDetail('unique')">
+      <div class="kpi-mini clickable" data-kpi="unique">
         <div class="lbl">고유 메뉴 <span style="font-weight:400;color:var(--muted);font-size:10px">(메인)</span></div>
         <div class="val">${uniqueMenus.size}<span class="unit">종</span></div>
       </div>
-      <div class="kpi-mini clickable" onclick="showKpiDetail('dup')">
+      <div class="kpi-mini clickable" data-kpi="dup">
         <div class="lbl">중복 메뉴 <span style="font-weight:400;color:var(--muted);font-size:10px">(메인)</span></div>
         <div class="val" style="color:${dupCount>0?'var(--bad)':'var(--good)'}">
           ${dupCount}<span class="unit">건</span>
@@ -2066,6 +2066,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   await syncFromServer();
   renderWeekList();
   renderAnalysis();
+});
+
+// KPI 상세 모달 — 이벤트 델리게이션 (innerHTML 교체 후에도 동작 보장)
+document.addEventListener('click', function(e) {
+  var card = e.target.closest('[data-kpi]');
+  if (card) showKpiDetail(card.getAttribute('data-kpi'));
 });
 
 // 탭 전환으로 다시 포커스 될 때 서버 데이터 재동기화
