@@ -969,6 +969,8 @@ function onExclAdd() {
   addExclKeyword(kw);
   input.value = '';
   renderAnalysis();
+  // 재렌더 후 입력 필드 포커스 복원
+  requestAnimationFrame(() => document.getElementById('exclInput')?.focus());
 }
 
 function onExclRemove(kw) {
@@ -1175,6 +1177,10 @@ let _freqChart = null;
 let _prefChart = null;
 
 function renderAnalysis() {
+  // 현재 활성 탭 이름 저장 → 재렌더 후 복원
+  const prevTab = document.querySelector('#analysisSection .tab-content.active')
+    ?.id?.replace('tab-', '') || 'freq';
+
   const allMenus = loadMenus();
   if (!Object.keys(allMenus).length) {
     document.getElementById('analysisSection').innerHTML = `
@@ -1223,22 +1229,34 @@ function renderAnalysis() {
     ${buildExclBar()}
 
     <div class="tab-bar">
-      <button class="tab-item active" onclick="showTab('freq',this)">📊 메뉴 빈도</button>
+      <button class="tab-item" onclick="showTab('freq',this)">📊 메뉴 빈도</button>
       <button class="tab-item" onclick="showTab('dup',this)">🔄 중복 검토</button>
       <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
       ${hasPref ? '<button class="tab-item" onclick="showTab(\'pref\',this)">⭐ 선호도 분석</button>' : ''}
       <button class="tab-item" onclick="showTab('feedback',this)">💡 관리자 피드백</button>
     </div>
 
-    <div class="tab-content active" id="tab-freq">${buildFreqTab(freq)}</div>
+    <div class="tab-content" id="tab-freq">${buildFreqTab(freq)}</div>
     <div class="tab-content" id="tab-dup">${buildDupTab(dups)}</div>
     <div class="tab-content" id="tab-comp">${buildCompTab(allMenus, freq)}</div>
     ${hasPref ? `<div class="tab-content" id="tab-pref">${buildPrefTab(pref, Object.keys(pref).length)}</div>` : ''}
     <div class="tab-content" id="tab-feedback">${buildFeedbackTab(feedback)}</div>
   `;
 
-  renderFreqCharts(freq);
-  if (hasPref) renderPrefChart(pref);
+  // 이전 탭 상태 복원 (없으면 freq 기본값)
+  const targetTab = document.getElementById(`tab-${prevTab}`) ? prevTab : 'freq';
+  document.querySelectorAll('#analysisSection .tab-content').forEach(el => el.classList.remove('active'));
+  const targetEl = document.getElementById(`tab-${targetTab}`);
+  if (targetEl) targetEl.classList.add('active');
+  document.querySelectorAll('#analysisSection .tab-item').forEach(b => {
+    b.classList.toggle('active', (b.getAttribute('onclick') || '').includes(`'${targetTab}'`));
+  });
+
+  // 차트는 다음 프레임에 렌더 — innerHTML 직후 canvas 크기가 확정되지 않아 발생하는 0-size 문제 방지
+  requestAnimationFrame(() => {
+    renderFreqCharts(freq);
+    if (hasPref) renderPrefChart(pref);
+  });
 }
 
 function showTab(name, btn) {
@@ -1247,6 +1265,14 @@ function showTab(name, btn) {
   const tc = document.getElementById(`tab-${name}`);
   if (tc) tc.classList.add('active');
   if (btn) btn.classList.add('active');
+
+  // 빈도·선호도 탭 전환 시: 숨겨진 상태로 렌더된 Chart.js를 강제 리사이즈
+  if (name === 'freq' && _freqChart) {
+    requestAnimationFrame(() => _freqChart.forEach(c => c.resize()));
+  }
+  if (name === 'pref' && _prefChart) {
+    requestAnimationFrame(() => _prefChart.resize());
+  }
 }
 
 /* ── 빈도 탭 ── */
