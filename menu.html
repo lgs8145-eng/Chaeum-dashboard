@@ -124,6 +124,21 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .pref-bar-bg{flex:1;background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden}
 .pref-bar-fill{height:8px;border-radius:4px;transition:width .4s}
 
+/* 구성 분석 카드 */
+.comp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px}
+.comp-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.comp-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.comp-card-title{font-size:14px;font-weight:700;color:var(--ink)}
+.comp-bar-bg{background:#e2e8f0;border-radius:6px;height:10px;overflow:hidden;margin:4px 0 6px}
+.comp-bar-fill{height:10px;border-radius:6px;transition:width .5s}
+.comp-stat{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.comp-stat:last-child{border-bottom:none}
+.comp-stat-label{color:var(--muted)}
+.comp-stat-val{font-weight:700}
+.comp-verdict{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.comp-verdict-item{font-size:12.5px;padding:6px 12px;border-radius:8px;display:flex;align-items:center;gap:5px}
+@media(max-width:640px){.comp-grid{grid-template-columns:1fr}}
+
 /* KPI mini */
 .kpi-mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
 .kpi-mini{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
@@ -1582,27 +1597,110 @@ function buildCompTab(allMenus, freq) {
     }
   }
 
-  const rows = ['breakfast','lunchA','lunchB','dinner'].map(mt => {
-    const avg = mealDays[mt] ? (mealTotals[mt]/mealDays[mt]).toFixed(1) : '-';
-    const coverage = totalDays ? Math.round(mealDays[mt]/totalDays*100) : 0;
-    const uniq = Object.keys(freq[mt]).length;
-    return `<tr>
-      <td>${MEAL_LABELS[mt]}</td>
-      <td>${mealDays[mt]}일 / ${totalDays}일 (${coverage}%)</td>
-      <td>${avg}</td>
-      <td>${uniq}</td>
-    </tr>`;
-  }).join('');
+  const ICON  = { breakfast:'🌅', lunchA:'☀️', lunchB:'🌤️', dinner:'🌙' };
+  const ORDER = ['breakfast','lunchA','lunchB','dinner'];
 
-  return `<div class="card">
-    <h3>식사 구분별 구성 현황</h3>
-    <div class="desc">등록된 전체 기간 기준</div>
-    <table>
-      <thead><tr><th>구분</th><th>등록일/전체</th><th>평균 메뉴 수</th><th>고유 메뉴 종수</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <div class="note-blue" style="margin-top:12px">평균 메뉴 수 3개 이상, 고유 메뉴 종수가 많을수록 다양한 식단 구성입니다.</div>
-  </div>`;
+  // ── 카드 4개 ───────────────────────────────────────────────
+  function makeCard(mt) {
+    const label   = MEAL_LABELS[mt];
+    const opDays  = mealDays[mt];
+    const opRate  = totalDays ? Math.round(opDays / totalDays * 100) : 0;
+    const avgRaw  = opDays ? mealTotals[mt] / opDays : 0;
+    const avg     = opDays ? avgRaw.toFixed(1) : '-';
+    const uniq    = Object.keys(freq[mt]).length;
+
+    if (opRate === 0) {
+      return '<div class="comp-card" style="opacity:.45">'
+           + '<div class="comp-card-header">'
+           + '<span class="comp-card-title">' + ICON[mt] + ' ' + label + '</span>'
+           + '<span class="badge badge-blue">미등록</span>'
+           + '</div>'
+           + '<p style="font-size:13px;color:var(--muted);margin:0">등록된 식단 데이터가 없습니다.</p>'
+           + '</div>';
+    }
+
+    // 운영률 판정
+    var barColor  = opRate >= 80 ? 'var(--good)' : opRate >= 50 ? 'var(--warn)' : 'var(--bad)';
+    // 평균 메뉴 수 판정 (중식은 3개 이상, 조식·석식은 2개 이상)
+    var minAvg    = (mt === 'lunchA' || mt === 'lunchB') ? 3 : 2;
+    var avgColor  = avgRaw >= minAvg + 0.5 ? 'var(--good)' : avgRaw >= minAvg ? 'var(--warn)' : 'var(--bad)';
+    // 다양성 판정: 고유 메뉴 수 / 운영일 수 (낮을수록 반복이 많음)
+    var divRatio  = opDays ? uniq / opDays : 0;
+    var divColor  = divRatio >= 0.6 ? 'var(--good)' : divRatio >= 0.35 ? 'var(--warn)' : 'var(--bad)';
+    var divLabel  = divRatio >= 0.6 ? '다양함' : divRatio >= 0.35 ? '보통' : '반복 많음';
+
+    // 종합 배지
+    var isWarn    = avgRaw < minAvg || divRatio < 0.35 || opRate < 60;
+    var badgeHtml = isWarn
+      ? '<span class="badge badge-warn">검토 필요</span>'
+      : '<span class="badge badge-green">양호</span>';
+
+    return '<div class="comp-card">'
+         + '<div class="comp-card-header">'
+         + '<span class="comp-card-title">' + ICON[mt] + ' ' + label + '</span>'
+         + badgeHtml
+         + '</div>'
+
+         // 운영률
+         + '<div class="comp-stat"><span class="comp-stat-label">운영 현황</span>'
+         + '<span class="comp-stat-val" style="color:' + barColor + '">' + opRate + '%</span></div>'
+         + '<div class="comp-bar-bg"><div class="comp-bar-fill" style="width:' + opRate + '%;background:' + barColor + '"></div></div>'
+         + '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">'
+         + totalDays + '일 중 ' + opDays + '일 운영됨</div>'
+
+         // 하루 평균 메뉴 수
+         + '<div class="comp-stat"><span class="comp-stat-label">하루 평균 메뉴 수</span>'
+         + '<span class="comp-stat-val" style="color:' + avgColor + '">' + avg + '가지</span></div>'
+
+         // 다양성
+         + '<div class="comp-stat"><span class="comp-stat-label">메뉴 다양성</span>'
+         + '<span class="comp-stat-val" style="color:' + divColor + '">'
+         + uniq + '종 (' + divLabel + ')</span></div>'
+         + '</div>';
+  }
+
+  var cards = ORDER.map(makeCard).join('');
+
+  // ── 핵심 개선 포인트 요약 ──────────────────────────────────
+  var issues = [];
+  var goods  = [];
+  for (var i = 0; i < ORDER.length; i++) {
+    var mt2     = ORDER[i];
+    var lbl2    = MEAL_LABELS[mt2];
+    var opR     = totalDays ? Math.round(mealDays[mt2] / totalDays * 100) : 0;
+    var avgR    = mealDays[mt2] ? mealTotals[mt2] / mealDays[mt2] : 0;
+    var uniq2   = Object.keys(freq[mt2]).length;
+    var minA    = (mt2 === 'lunchA' || mt2 === 'lunchB') ? 3 : 2;
+    var divR    = mealDays[mt2] ? uniq2 / mealDays[mt2] : 0;
+    if (opR === 0) continue;
+    if (avgR < minA)   issues.push(lbl2 + ' 하루 평균 메뉴가 ' + avgR.toFixed(1) + '가지로 부족 (권장 ' + minA + '가지 이상)');
+    if (divR < 0.35)   issues.push(lbl2 + ' 같은 메뉴가 자주 반복됨 (' + uniq2 + '종만 사용 중)');
+    if (opR < 60)      issues.push(lbl2 + ' 운영일 비율이 ' + opR + '%로 낮음');
+    if (avgR >= minA && divR >= 0.5 && opR >= 80) goods.push(lbl2);
+  }
+
+  var summaryHtml = '';
+  if (issues.length) {
+    var issueItems = issues.map(function(t) {
+      return '<div class="comp-verdict-item" style="background:#fff7ed;color:#92400e">⚠️ ' + t + '</div>';
+    }).join('');
+    summaryHtml += '<div class="comp-verdict">' + issueItems + '</div>';
+  }
+  if (goods.length) {
+    summaryHtml += '<div class="comp-verdict">'
+                 + '<div class="comp-verdict-item" style="background:#f0fdf4;color:#166534">✅ '
+                 + goods.join(' · ') + ' — 메뉴 구성이 양호합니다'
+                 + '</div></div>';
+  }
+  if (!issues.length && !goods.length) {
+    summaryHtml = '<div class="note-blue">분석할 데이터가 충분하지 않습니다.</div>';
+  }
+
+  return '<div class="note-blue" style="margin-bottom:14px">'
+       + '각 식사의 <strong>운영 빈도</strong>, <strong>하루 메뉴 수</strong>, <strong>반복 여부</strong>를 한눈에 확인할 수 있습니다.'
+       + '</div>'
+       + '<div class="comp-grid">' + cards + '</div>'
+       + summaryHtml;
 }
 
 /* ── 선호도 탭 ── */
