@@ -71,8 +71,17 @@ body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Got
 .upload-result.info{background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;display:block}
 
 /* Week list */
+.week-group{margin-bottom:8px}
+.week-group-header{display:flex;justify-content:space-between;align-items:center;
+  padding:9px 14px;background:#f1f5f9;border:1px solid var(--line);border-radius:8px;
+  cursor:pointer;font-size:13px;user-select:none;transition:background .15s}
+.week-group-header:hover{background:#e2e8f0}
+.week-group-meta{font-size:11px;color:var(--muted);margin-left:6px;font-weight:400}
+.week-group-arrow{font-size:11px;color:var(--muted);transition:transform .2s}
+.week-group-arrow.open{transform:rotate(180deg)}
+.week-group-body{padding:4px 0 2px}
 .week-item{display:flex;justify-content:space-between;align-items:center;
-  padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:13px;
+  padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:4px;font-size:13px;
   border:1px solid var(--line);cursor:pointer;transition:background .15s}
 .week-item:hover{background:#eff6ff}
 .week-item-right{display:flex;align-items:center;gap:8px}
@@ -1217,38 +1226,79 @@ function generateFeedback(allMenus, freq, dups, pref) {
 ══════════════════════════════════════════════════ */
 function renderWeekList() {
   const all = loadMenus();
-  const keys = Object.keys(all).sort().reverse();
+  const keys = Object.keys(all).sort().reverse(); // 최신순
   const container = document.getElementById('weekListContainer');
   const empty = document.getElementById('weekEmptyState');
 
   if (!keys.length) {
     if (empty) empty.style.display = 'block';
-    // Remove any existing week items
-    [...container.querySelectorAll('.week-item')].forEach(el => el.remove());
+    container.querySelectorAll('.week-group').forEach(function(el){ el.remove(); });
     return;
   }
   if (empty) empty.style.display = 'none';
+  container.querySelectorAll('.week-group').forEach(function(el){ el.remove(); });
 
-  // Rebuild list
-  [...container.querySelectorAll('.week-item')].forEach(el => el.remove());
-  for (const wk of keys) {
-    const data = all[wk];
-    const totalMenus = (data.days||[]).reduce((s,d)=>
-      s + (d.breakfast||[]).length + (d.lunchA||[]).length + (d.lunchB||[]).length + (d.dinner||[]).length, 0);
-    const hasCross = checkCrossData(data);
-    const el = document.createElement('div');
-    el.className = 'week-item';
-    el.onclick = () => showDetailModal(wk);
-    el.innerHTML = `
-      <div>
-        <div style="font-weight:600">${data.label || makeWeekLabel(wk)}</div>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${(data.days||[]).length}일 · 메뉴 ${totalMenus}건</div>
-      </div>
-      <div class="week-item-right">
-        ${hasCross ? '<span class="badge badge-green">교차분석 가능</span>' : ''}
-        <span class="badge badge-blue">${data.month || ''}</span>
-      </div>`;
-    container.appendChild(el);
+  // 월별 그룹핑
+  var groups = {}; // { 'YYYY-MM': [weekKey, ...] }
+  for (var i = 0; i < keys.length; i++) {
+    var wk = keys[i];
+    var month = (all[wk].month) || wk.slice(0, 7);
+    if (!groups[month]) groups[month] = [];
+    groups[month].push(wk);
+  }
+
+  var sortedMonths = Object.keys(groups).sort().reverse();
+  var latestMonth = sortedMonths[0]; // 가장 최신 달만 기본 펼침
+
+  for (var mi = 0; mi < sortedMonths.length; mi++) {
+    var month = sortedMonths[mi];
+    var wks = groups[month];
+    var isOpen = (month === latestMonth);
+    var parts = month.split('-');
+    var monthLabel = parts[0] + '년 ' + (+parts[1]) + '월';
+
+    var groupEl = document.createElement('div');
+    groupEl.className = 'week-group';
+
+    // 그룹 헤더
+    var headerEl = document.createElement('div');
+    headerEl.className = 'week-group-header';
+    headerEl.setAttribute('data-month', month);
+    headerEl.innerHTML = '<span><strong>' + monthLabel + '</strong>'
+      + '<span class="week-group-meta">' + wks.length + '주차 등록</span></span>'
+      + '<span class="week-group-arrow' + (isOpen ? ' open' : '') + '">▼</span>';
+
+    // 주차 목록 바디
+    var bodyEl = document.createElement('div');
+    bodyEl.className = 'week-group-body';
+    if (!isOpen) bodyEl.style.display = 'none';
+
+    for (var wi = 0; wi < wks.length; wi++) {
+      var wk2 = wks[wi];
+      var data = all[wk2];
+      var totalMenus = (data.days||[]).reduce(function(s,d){
+        return s + (d.breakfast||[]).length + (d.lunchA||[]).length
+                 + (d.lunchB||[]).length + (d.dinner||[]).length;
+      }, 0);
+      var hasCross = checkCrossData(data);
+      var itemEl = document.createElement('div');
+      itemEl.className = 'week-item';
+      itemEl.setAttribute('data-wk', wk2);
+      itemEl.innerHTML = '<div>'
+        + '<div style="font-weight:600">' + (data.label || makeWeekLabel(wk2)) + '</div>'
+        + '<div style="font-size:11.5px;color:var(--muted);margin-top:2px">'
+        + (data.days||[]).length + '일 · 메뉴 ' + totalMenus + '건</div>'
+        + '</div>'
+        + '<div class="week-item-right">'
+        + (hasCross ? '<span class="badge badge-green">교차분석 가능</span>' : '')
+        + '<span style="font-size:11px;color:var(--muted)">상세 보기 →</span>'
+        + '</div>';
+      bodyEl.appendChild(itemEl);
+    }
+
+    groupEl.appendChild(headerEl);
+    groupEl.appendChild(bodyEl);
+    container.appendChild(groupEl);
   }
 }
 
@@ -2158,6 +2208,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (authIsAdmin()) {
     const btn = document.getElementById('deleteAllBtn');
     if (btn) btn.style.display = '';
+  }
+
+  // 주차 목록 — 이벤트 델리게이션 (그룹 토글 + 주차 상세 클릭)
+  var weekContainer = document.getElementById('weekListContainer');
+  if (weekContainer) {
+    weekContainer.addEventListener('click', function(e) {
+      // 그룹 헤더 토글
+      var header = e.target.closest('.week-group-header');
+      if (header) {
+        var body  = header.nextElementSibling;
+        var arrow = header.querySelector('.week-group-arrow');
+        var open  = body.style.display !== 'none';
+        body.style.display  = open ? 'none' : '';
+        if (arrow) arrow.classList.toggle('open', !open);
+        return;
+      }
+      // 주차 아이템 상세 클릭
+      var item = e.target.closest('.week-item[data-wk]');
+      if (item) showDetailModal(item.getAttribute('data-wk'));
+    });
   }
 
   // 서버(Redis)에서 최신 데이터 로드 후 렌더
