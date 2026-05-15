@@ -1496,37 +1496,165 @@ function showKpiDetail(type) {
   document.getElementById('kpiDetailModal').classList.add('show');
 }
 
+/* ── 메뉴 분석 헬퍼 ── */
+const MENU_CATEGORIES = [
+  { label: '국·탕·찌개류', p: [/국$/, /탕$/, /찌개$/, /전골/, /해장/, /된장/, /설렁/, /곰탕/, /삼계/, /감자탕/, /추어탕/, /육개장/, /부대찌/, /순두부/] },
+  { label: '구이류',        p: [/구이/, /불고기/, /삼겹/, /갈비/, /바비큐/, /스테이크/] },
+  { label: '볶음류',        p: [/볶음/, /제육/, /쭈꾸미/, /낙지/, /오삼/] },
+  { label: '튀김·전류',    p: [/튀김/, /전$/, /까스/, /까츠/, /치킨/, /탕수/, /유린기/, /강정/, /너겟/, /치즈볼/] },
+  { label: '조림·무침류',  p: [/조림/, /무침/, /장아찌/] },
+  { label: '찜·수육류',    p: [/찜/, /수육/, /족발/, /보쌈/] },
+  { label: '면·밥류',      p: [/파스타/, /우동/, /냉면/, /덮밥/, /볶음밥/, /비빔밥/, /초밥/, /김밥/, /리조또/, /라멘/] },
+  { label: '샐러드·서양식', p: [/샐러드/, /수프/, /스프/, /피자/, /버거/, /카레/, /하이라이스/, /그라탕/] },
+];
+
+function classifyMenu(name) {
+  for (var ci = 0; ci < MENU_CATEGORIES.length; ci++) {
+    var cat = MENU_CATEGORIES[ci];
+    for (var pi = 0; pi < cat.p.length; pi++) {
+      if (cat.p[pi].test(name)) return cat.label;
+    }
+  }
+  return '기타';
+}
+
+function buildLastServedMap(allMenus) {
+  var map = {};
+  var mts = ['breakfast','lunchA','lunchB','dinner'];
+  for (var wkKey in allMenus) {
+    var wk = allMenus[wkKey];
+    for (var di = 0; di < (wk.days || []).length; di++) {
+      var day = wk.days[di];
+      var d = day.date;
+      if (!d) continue;
+      for (var mi = 0; mi < mts.length; mi++) {
+        for (var ii = 0; ii < (day[mts[mi]] || []).length; ii++) {
+          var nm = day[mts[mi]][ii].trim();
+          if (!nm || isSideDish(nm)) continue;
+          if (!map[nm] || d > map[nm]) map[nm] = d;
+        }
+      }
+    }
+  }
+  return map;
+}
+
+function daysSinceServed(isoDate) {
+  if (!isoDate) return null;
+  return Math.round((Date.now() - new Date(isoDate).getTime()) / 86400000);
+}
+
+function buildCycleMap(allMenus) {
+  var dateMap = {};
+  var mts = ['breakfast','lunchA','lunchB','dinner'];
+  for (var wkKey in allMenus) {
+    var wk = allMenus[wkKey];
+    for (var di = 0; di < (wk.days || []).length; di++) {
+      var day = wk.days[di];
+      var d = day.date;
+      if (!d) continue;
+      for (var mi = 0; mi < mts.length; mi++) {
+        for (var ii = 0; ii < (day[mts[mi]] || []).length; ii++) {
+          var nm = day[mts[mi]][ii].trim();
+          if (!nm || isSideDish(nm)) continue;
+          if (!dateMap[nm]) dateMap[nm] = {};
+          dateMap[nm][d] = true;
+        }
+      }
+    }
+  }
+  var result = {};
+  for (var nm in dateMap) {
+    var dates = Object.keys(dateMap[nm]).sort();
+    if (dates.length < 2) continue;
+    var total = 0;
+    for (var i = 1; i < dates.length; i++) {
+      total += Math.round((new Date(dates[i]).getTime() - new Date(dates[i-1]).getTime()) / 86400000);
+    }
+    result[nm] = Math.round(total / (dates.length - 1));
+  }
+  return result;
+}
+
+function buildCatDistHtml(freq) {
+  var mts = ['breakfast','lunchA','lunchB','dinner'];
+  var allCats = {};
+  for (var ti = 0; ti < mts.length; ti++) {
+    var entries = Object.entries(freq[mts[ti]]);
+    for (var ei = 0; ei < entries.length; ei++) {
+      var cat = classifyMenu(entries[ei][0]);
+      allCats[cat] = (allCats[cat] || 0) + entries[ei][1];
+    }
+  }
+  var totalCnt = Object.values(allCats).reduce(function(s,v){ return s+v; }, 0);
+  if (!totalCnt) return '';
+  var sorted = Object.entries(allCats).sort(function(a,b){ return b[1]-a[1]; });
+  var rows = '';
+  for (var si = 0; si < sorted.length; si++) {
+    var catName = sorted[si][0], catCnt = sorted[si][1];
+    var pct = Math.round(catCnt / totalCnt * 100);
+    rows += '<tr>'
+      + '<td style="min-width:100px;font-weight:500">' + catName + '</td>'
+      + '<td><div style="background:#e2e8f0;border-radius:3px;height:10px;min-width:80px">'
+      + '<div style="background:#3b82f6;border-radius:3px;height:10px;width:' + pct + '%"></div>'
+      + '</div></td>'
+      + '<td style="text-align:right;min-width:36px">' + pct + '%</td>'
+      + '<td style="text-align:right;min-width:50px;color:var(--muted)">' + catCnt + '회</td>'
+      + '</tr>';
+  }
+  return '<div class="card"><h3>메뉴 카테고리 분포</h3>'
+    + '<div class="desc">조식·중식 A·B·석식 전체 · 메인 메뉴 기준</div>'
+    + '<table><tbody>' + rows + '</tbody></table></div>';
+}
+
 /* ── 빈도 탭 ── */
 function buildFreqTab(freq) {
-  return `
-    <div class="note-blue" style="margin-bottom:14px">
-      밥·김치류 등 기본 제공 반찬은 제외하고 <strong>메인 메뉴 중심</strong>으로 집계합니다.
-    </div>
-    <div class="row cols-2">
-      <div class="card">
-        <h3>조식 · 석식 메뉴 빈도 Top 10</h3>
-        <div class="desc">등록된 전체 기간 기준 · 메인 메뉴 기준</div>
-        <div class="chart-wrap tall"><canvas id="freqChart1"></canvas></div>
-      </div>
-      <div class="card">
-        <h3>중식 A · B 메뉴 빈도 Top 10</h3>
-        <div class="desc">등록된 전체 기간 기준 · 메인 메뉴 기준</div>
-        <div class="chart-wrap tall"><canvas id="freqChart2"></canvas></div>
-      </div>
-    </div>
-    <div class="row cols-2">
-      ${['breakfast','lunchA','lunchB','dinner'].map(mt => {
-        const top = Object.entries(freq[mt]).sort((a,b)=>b[1]-a[1]).slice(0,8);
-        if (!top.length) return '';
-        return `<div class="card">
-          <h3>${MEAL_LABELS[mt]} 상위 메뉴</h3>
-          <table>
-            <thead><tr><th>메뉴</th><th>제공 횟수</th></tr></thead>
-            <tbody>${top.map(([n,c],i)=>`<tr><td>${i+1}. ${n}</td><td><strong>${c}</strong>회</td></tr>`).join('')}</tbody>
-          </table>
-        </div>`;
-      }).join('')}
-    </div>`;
+  var allMenus = _lastAllMenus || {};
+  var lastServed = buildLastServedMap(allMenus);
+  var cycleMap   = buildCycleMap(allMenus);
+
+  var html = '<div class="note-blue" style="margin-bottom:14px">'
+    + '밥·김치류 등 기본 제공 반찬은 제외하고 <strong>메인 메뉴 중심</strong>으로 집계합니다.'
+    + '</div>'
+    + '<div class="row cols-2">'
+    + '<div class="card"><h3>조식 · 석식 메뉴 빈도 Top 10</h3>'
+    + '<div class="desc">등록된 전체 기간 기준 · 메인 메뉴 기준</div>'
+    + '<div class="chart-wrap tall"><canvas id="freqChart1"></canvas></div></div>'
+    + '<div class="card"><h3>중식 A · B 메뉴 빈도 Top 10</h3>'
+    + '<div class="desc">등록된 전체 기간 기준 · 메인 메뉴 기준</div>'
+    + '<div class="chart-wrap tall"><canvas id="freqChart2"></canvas></div></div>'
+    + '</div>';
+
+  var mts = ['breakfast','lunchA','lunchB','dinner'];
+  var tableCards = '';
+  for (var ti = 0; ti < mts.length; ti++) {
+    var mt = mts[ti];
+    var top = Object.entries(freq[mt]).sort(function(a,b){ return b[1]-a[1]; }).slice(0,8);
+    if (!top.length) continue;
+    var rows = '';
+    for (var ri = 0; ri < top.length; ri++) {
+      var nm = top[ri][0], cnt = top[ri][1];
+      var ls    = lastServed[nm];
+      var days  = daysSinceServed(ls);
+      var cycle = cycleMap[nm];
+      var dStr  = days  != null ? days  + '일 전' : '—';
+      var cStr  = cycle != null ? '~' + cycle + '일' : '—';
+      rows += '<tr>'
+        + '<td>' + (ri+1) + '. ' + escHtml(nm) + '</td>'
+        + '<td style="text-align:right"><strong>' + cnt + '</strong>회</td>'
+        + '<td style="text-align:right;font-size:12px;color:var(--muted)">' + dStr + '</td>'
+        + '<td style="text-align:right;font-size:12px;color:var(--muted)">' + cStr + '</td>'
+        + '</tr>';
+    }
+    tableCards += '<div class="card"><h3>' + MEAL_LABELS[mt] + ' 상위 메뉴</h3>'
+      + '<table><thead><tr>'
+      + '<th>메뉴</th><th style="text-align:right">횟수</th>'
+      + '<th style="text-align:right">마지막 제공</th><th style="text-align:right">평균 주기</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  html += '<div class="row cols-2">' + tableCards + '</div>';
+  html += buildCatDistHtml(freq);
+  return html;
 }
 
 function renderFreqCharts(freq) {

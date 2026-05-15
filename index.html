@@ -400,6 +400,10 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
   </div>
 </div>
 
+<div class="row cols-1" id="weekdayPatternRow" style="display:none">
+  <div class="card" id="weekdayPatternCard"></div>
+</div>
+
 <div class="row cols-2b">
   <div class="card">
     <h3>법인별 안분 비율</h3>
@@ -567,7 +571,9 @@ function deltaHtml(val, prevVal) {
   const pct  = ((diff / prevVal) * 100).toFixed(1);
   const cls  = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
   const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '—';
-  return `<span class="delta ${cls}">${arrow} ${fmt(Math.abs(diff))} (${diff >= 0 ? '+' : ''}${pct}%)</span>`;
+  const warn = Math.abs(Number(pct)) >= 15
+    ? ' <span style="color:#d97706;font-size:11px;font-weight:700" title="전월 대비 15% 이상 변동">⚠</span>' : '';
+  return `<span class="delta ${cls}">${arrow} ${fmt(Math.abs(diff))} (${diff >= 0 ? '+' : ''}${pct}%)</span>${warn}`;
 }
 
 function setChart(id, config) {
@@ -937,6 +943,51 @@ function renderDaily(r) {
     options:{...BASE_OPTS, scales:{y:{beginAtZero:false,ticks:{callback:v=>fmt(v)+'식'}}},
       plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)+'식'}}}}
   });
+  renderWeekdayPattern(r);
+}
+
+function renderWeekdayPattern(r) {
+  var row  = document.getElementById('weekdayPatternRow');
+  var card = document.getElementById('weekdayPatternCard');
+  if (!row || !card || !r.daily || !r.daily.length) { if(row) row.style.display='none'; return; }
+
+  var WD_ORDER = ['월','화','수','목','금'];
+  var sums = {월:[],화:[],수:[],목:[],금:[]};
+  for (var i = 0; i < r.daily.length; i++) {
+    var m = r.daily[i][0].match(/\(([가-힣])\)/);
+    if (!m) continue;
+    var wd = m[1];
+    if (!sums[wd]) continue;
+    sums[wd].push(r.daily[i][2]);
+  }
+
+  var avgs = WD_ORDER.map(function(wd) {
+    var arr = sums[wd];
+    return arr.length ? Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length) : 0;
+  });
+  var maxAvg = Math.max.apply(null, avgs);
+  var minAvg = Math.min.apply(null, avgs.filter(function(v){return v>0;}));
+  if (!maxAvg) { row.style.display='none'; return; }
+  row.style.display = '';
+
+  var barsHtml = '';
+  for (var j = 0; j < WD_ORDER.length; j++) {
+    var wd2 = WD_ORDER[j], avg = avgs[j];
+    if (!avg) continue;
+    var pct   = Math.round(avg / maxAvg * 100);
+    var color = avg === maxAvg ? '#2563eb' : avg === minAvg ? '#94a3b8' : '#60a5fa';
+    barsHtml += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+      + '<div style="width:22px;text-align:center;font-weight:700;font-size:13px;color:var(--ink)">' + wd2 + '</div>'
+      + '<div style="flex:1;background:#e2e8f0;border-radius:4px;height:22px;position:relative">'
+      + '<div style="background:' + color + ';border-radius:4px;height:22px;width:' + pct + '%"></div>'
+      + '</div>'
+      + '<div style="width:58px;text-align:right;font-size:12.5px;font-weight:600">' + fmt(avg) + '<span style="font-size:11px;color:var(--muted);font-weight:400">식</span></div>'
+      + '</div>';
+  }
+
+  card.innerHTML = '<h3>요일별 평균 식수 패턴</h3>'
+    + '<div class="desc">' + r.label + ' · 실제 식수 기준 · 최다 요일 <span style="color:#2563eb;font-weight:600">파랑</span></div>'
+    + '<div style="margin-top:14px;max-width:520px">' + barsHtml + '</div>';
 }
 
 function renderCompanies(r) {
