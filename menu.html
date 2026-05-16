@@ -1690,15 +1690,18 @@ function buildDeepTab(allMenus) {
       + '</div></div>';
   }
 
-  function kpiCard(label, val, sub, color, badge) {
-    return '<div class="card">'
+  function kpiCard(label, val, sub, color, badge, dataKey) {
+    var clickAttr = dataKey ? ' onclick="showDeepKpiDetail(\'' + dataKey + '\')" style="cursor:pointer"' : '';
+    return '<div class="card"' + clickAttr + '>'
       + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500">' + label + '</div>'
       + '<div style="font-size:28px;font-weight:700;color:' + color + '">' + val + '</div>'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'
       + '<span style="font-size:11.5px;color:var(--muted)">' + sub + '</span>'
       + '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;'
       + 'background:' + color + '20;color:' + color + '">' + badge + '</span>'
-      + '</div></div>';
+      + '</div>'
+      + (dataKey ? '<div style="font-size:10px;color:var(--muted);margin-top:8px;text-align:right">클릭하여 상세 보기 →</div>' : '')
+      + '</div>';
   }
 
   return ''
@@ -1719,13 +1722,13 @@ function buildDeepTab(allMenus) {
     // 행 2: 반복도 + 건강도 KPI 카드 4개
     + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px">'
     + kpiCard('주재료 반복률', ingrRepeatRate + '%', '최근 4주', ingrC,
-        rateBadge(ingrRepeatRate, 30, 60, ['다양함','주의','편중']))
+        rateBadge(ingrRepeatRate, 30, 60, ['다양함','주의','편중']), 'ingr')
     + kpiCard('조리방식 중복', cookOverlapRate + '%', '최근 2주', cookC,
-        rateBadge(cookOverlapRate, 50, 75, ['다양함','주의','편중']))
+        rateBadge(cookOverlapRate, 50, 75, ['다양함','주의','편중']), 'cook')
     + kpiCard('고열량 메뉴', hcPct + '%', '전체 기간', highC,
-        rateBadge(hcPct, 20, 35, ['양호','주의','과다']))
+        rateBadge(hcPct, 20, 35, ['양호','주의','과다']), 'highcal')
     + kpiCard('건강 메뉴', hhPct + '%', '전체 기간', hlthC,
-        hhPct >= 25 ? '충분' : hhPct >= 15 ? '보통' : '부족')
+        hhPct >= 25 ? '충분' : hhPct >= 15 ? '보통' : '부족', 'healthy')
     + '</div>'
 
     // 행 3: 건강도 시각화 + 탄단지 추정
@@ -1821,6 +1824,199 @@ function renderDeepCharts(allMenus) {
       datasets: [{ data: cookDs.data, backgroundColor: cookDs.colors, borderRadius: 4, borderSkipped: false }] },
       options: baseOpts })
   );
+}
+
+/* ── 심층 분석 KPI 상세 모달 ── */
+function showDeepKpiDetail(type) {
+  var modal  = document.getElementById('kpiDetailModal');
+  var titleEl = document.getElementById('kpiDetailTitle');
+  var bodyEl  = document.getElementById('kpiDetailBody');
+  if (!modal || !titleEl || !bodyEl) return;
+
+  var allMenus  = _lastAllMenus || {};
+  var sortedWks = Object.values(allMenus).sort(function(a, b) {
+    return (a.weekStart || '').localeCompare(b.weekStart || '');
+  });
+
+  var title = '', html = '';
+
+  if (type === 'ingr') {
+    title = '주재료 반복률 상세';
+    var recent4  = sortedWks.slice(-4);
+    var wkLabels = recent4.map(function(wk) { return wk.label || wk.weekStart || ''; });
+
+    // 카테고리별로 어느 주차에 등장했는지 기록 (인덱스 0~3)
+    var ingrWks = {};
+    recent4.forEach(function(wk, wi) {
+      getWkItems(wk).forEach(function(name) {
+        var cat = classifyIngr(name);
+        if (!ingrWks[cat]) ingrWks[cat] = [];
+        if (ingrWks[cat].indexOf(wi) === -1) ingrWks[cat].push(wi);
+      });
+    });
+
+    // 메뉴명별 반복 주차 수
+    var menuWks = {};
+    recent4.forEach(function(wk, wi) {
+      getWkItems(wk).forEach(function(name) {
+        if (!menuWks[name]) menuWks[name] = [];
+        if (menuWks[name].indexOf(wi) === -1) menuWks[name].push(wi);
+      });
+    });
+    var repeats = Object.keys(menuWks)
+      .filter(function(n) { return menuWks[n].length >= 2; })
+      .sort(function(a, b) { return menuWks[b].length - menuWks[a].length; });
+
+    html += '<p style="font-size:12px;color:var(--muted);margin-bottom:14px">최근 4주 메인 메뉴 기준 · 주재료 카테고리별 등장 현황</p>';
+    html += '<div style="overflow-x:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<thead><tr style="background:var(--bg-2)">';
+    html += '<th style="padding:6px 10px;text-align:left;font-weight:600;border-bottom:1px solid var(--border)">주재료</th>';
+    for (var ci2 = 0; ci2 < wkLabels.length; ci2++) {
+      html += '<th style="padding:6px 8px;text-align:center;font-weight:600;border-bottom:1px solid var(--border)">' + escHtml(wkLabels[ci2]) + '</th>';
+    }
+    html += '<th style="padding:6px 8px;text-align:center;font-weight:600;border-bottom:1px solid var(--border)">등장</th>';
+    html += '<th style="padding:6px 8px;text-align:center;font-weight:600;border-bottom:1px solid var(--border)">상태</th>';
+    html += '</tr></thead><tbody>';
+
+    var ingrList = INGR_CATS.concat([{ label: '기타' }]);
+    for (var ci = 0; ci < ingrList.length; ci++) {
+      var cat    = ingrList[ci];
+      var wkArr  = ingrWks[cat.label] || [];
+      var cnt    = wkArr.length;
+      var status = cnt >= 3
+        ? '<span style="color:var(--bad);font-weight:700">편중</span>'
+        : cnt >= 2
+          ? '<span style="color:#f59e0b;font-weight:700">주의</span>'
+          : '<span style="color:var(--good)">다양</span>';
+      html += '<tr style="border-bottom:1px solid var(--border)">';
+      html += '<td style="padding:7px 10px;font-weight:500">' + cat.label + '</td>';
+      for (var wi2 = 0; wi2 < recent4.length; wi2++) {
+        var has = wkArr.indexOf(wi2) !== -1;
+        html += '<td style="padding:7px 8px;text-align:center">'
+          + (has ? '<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--primary);color:#fff;font-size:9px;line-height:16px;font-weight:700">●</span>' : '—')
+          + '</td>';
+      }
+      html += '<td style="padding:7px 8px;text-align:center;font-weight:700">' + cnt + '/' + recent4.length + '</td>';
+      html += '<td style="padding:7px 8px;text-align:center">' + status + '</td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+
+    if (repeats.length) {
+      html += '<h4 style="font-size:13px;font-weight:600;margin-bottom:8px">반복 등장 메뉴 (2주↑)</h4>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+      for (var ri = 0; ri < repeats.length; ri++) {
+        var rn = repeats[ri], rc = menuWks[rn].length;
+        html += '<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;'
+          + (rc >= 3 ? 'background:var(--primary);color:#fff' : 'background:#fff0ea;color:var(--primary)') + '">'
+          + escHtml(rn) + ' &times;' + rc + '</span>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div style="color:var(--good);font-size:13px;font-weight:600">최근 ' + recent4.length + '주 반복 등장 메뉴 없음 — 다양한 주재료 제공 중</div>';
+    }
+
+  } else if (type === 'cook') {
+    title = '조리방식 중복 상세';
+    var recent2 = sortedWks.slice(-2);
+    var wkA     = recent2.length >= 2 ? recent2[0] : null;
+    var wkB     = recent2.length >= 1 ? recent2[recent2.length - 1] : null;
+    var lblA    = wkA ? (wkA.label || wkA.weekStart || 'N-1주') : '';
+    var lblB    = wkB ? (wkB.label || wkB.weekStart || 'N주')   : '';
+
+    var buildCookSet = function(wk) {
+      var s = {};
+      if (!wk) return s;
+      getWkItems(wk).forEach(function(name) {
+        var m = classifyCook(name);
+        if (!s[m]) s[m] = [];
+        s[m].push(name);
+      });
+      return s;
+    };
+    var csA = buildCookSet(wkA);
+    var csB = buildCookSet(wkB);
+    var methodKeys = Object.keys(csA);
+    Object.keys(csB).forEach(function(k) { if (methodKeys.indexOf(k) === -1) methodKeys.push(k); });
+
+    html += '<p style="font-size:12px;color:var(--muted);margin-bottom:14px">최근 2주 메인 메뉴 기준 · 조리방식별 겹침 현황</p>';
+    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<thead><tr style="background:var(--bg-2)">';
+    html += '<th style="padding:6px 10px;text-align:left;font-weight:600;border-bottom:1px solid var(--border)">조리방식</th>';
+    html += '<th style="padding:6px 10px;font-weight:600;border-bottom:1px solid var(--border)">' + escHtml(lblA || 'N-1주') + '</th>';
+    html += '<th style="padding:6px 10px;font-weight:600;border-bottom:1px solid var(--border)">' + escHtml(lblB || 'N주') + '</th>';
+    html += '<th style="padding:6px 8px;text-align:center;font-weight:600;border-bottom:1px solid var(--border)">상태</th>';
+    html += '</tr></thead><tbody>';
+    for (var mi = 0; mi < methodKeys.length; mi++) {
+      var m = methodKeys[mi];
+      var in1 = csA[m] ? csA[m].map(escHtml).join(', ') : '—';
+      var in2 = csB[m] ? csB[m].map(escHtml).join(', ') : '—';
+      var overlap = csA[m] && csB[m];
+      html += '<tr style="border-bottom:1px solid var(--border)' + (overlap ? ';background:#fff7f0' : '') + '">';
+      html += '<td style="padding:7px 10px;font-weight:600">' + m + '</td>';
+      html += '<td style="padding:7px 10px;color:var(--text-2);font-size:12px">' + in1 + '</td>';
+      html += '<td style="padding:7px 10px;color:var(--text-2);font-size:12px">' + in2 + '</td>';
+      html += '<td style="padding:7px 8px;text-align:center">'
+        + (overlap ? '<span style="color:var(--bad);font-weight:700">중복</span>' : '<span style="color:var(--muted)">—</span>')
+        + '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+
+  } else if (type === 'highcal') {
+    title = '고열량 메뉴 상세';
+    var hcCount = {};
+    sortedWks.forEach(function(wk) {
+      getWkItems(wk).forEach(function(name) {
+        if (HIGH_CAL_P.test(name)) hcCount[name] = (hcCount[name] || 0) + 1;
+      });
+    });
+    var hcItems = Object.keys(hcCount).sort(function(a, b) { return hcCount[b] - hcCount[a]; });
+    html += '<p style="font-size:12px;color:var(--muted);margin-bottom:14px">전체 등록 기간 기준 · 고열량으로 분류된 메뉴 목록 (튀김·까스·치킨·삼겹 등)</p>';
+    if (!hcItems.length) {
+      html += '<div style="color:var(--good);font-size:13px;font-weight:600">고열량 메뉴 없음</div>';
+    } else {
+      html += '<div style="display:flex;flex-direction:column;gap:6px">';
+      for (var hi = 0; hi < hcItems.length; hi++) {
+        var hn = hcItems[hi], hc = hcCount[hn];
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;'
+          + 'padding:8px 12px;border-radius:8px;background:var(--bg-2);border-left:3px solid var(--bad)">'
+          + '<span style="font-size:13px;font-weight:500">' + escHtml(hn) + '</span>'
+          + '<span style="font-size:12px;font-weight:700;color:var(--bad)">' + hc + '회 제공</span>'
+          + '</div>';
+      }
+      html += '</div>';
+    }
+
+  } else if (type === 'healthy') {
+    title = '건강 메뉴 상세';
+    var hlCount = {};
+    sortedWks.forEach(function(wk) {
+      getWkItems(wk).forEach(function(name) {
+        if (HEALTHY_P.test(name)) hlCount[name] = (hlCount[name] || 0) + 1;
+      });
+    });
+    var hlItems = Object.keys(hlCount).sort(function(a, b) { return hlCount[b] - hlCount[a]; });
+    html += '<p style="font-size:12px;color:var(--muted);margin-bottom:14px">전체 등록 기간 기준 · 건강 메뉴로 분류된 항목 목록 (나물·두부·생선구이·미역국 등)</p>';
+    if (!hlItems.length) {
+      html += '<div style="color:var(--muted);font-size:13px">건강 메뉴로 분류된 항목 없음</div>';
+    } else {
+      html += '<div style="display:flex;flex-direction:column;gap:6px">';
+      for (var li = 0; li < hlItems.length; li++) {
+        var ln = hlItems[li], lc = hlCount[ln];
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;'
+          + 'padding:8px 12px;border-radius:8px;background:var(--bg-2);border-left:3px solid var(--good)">'
+          + '<span style="font-size:13px;font-weight:500">' + escHtml(ln) + '</span>'
+          + '<span style="font-size:12px;font-weight:700;color:var(--good)">' + lc + '회 제공</span>'
+          + '</div>';
+      }
+      html += '</div>';
+    }
+  }
+
+  if (!title) return;
+  titleEl.textContent = title;
+  bodyEl.innerHTML    = html;
+  modal.classList.add('show');
 }
 
 /* ── 빈도 탭 ── */
