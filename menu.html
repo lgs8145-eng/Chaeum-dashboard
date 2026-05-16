@@ -132,10 +132,6 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .fb-muted{background:#f8fafc;border:1px solid var(--line);border-left:4px solid #94a3b8}
 .fb-title{font-weight:700;margin-bottom:4px}
 
-/* Preference bar */
-.pref-bar-wrap{display:flex;align-items:center;gap:10px;margin:3px 0}
-.pref-bar-bg{flex:1;background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden}
-.pref-bar-fill{height:8px;border-radius:4px;transition:width .4s}
 
 /* 구성 분석 카드 */
 .comp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px}
@@ -257,7 +253,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
     <a class="back-btn" href="index.html">← 대시보드</a>
     <div>
       <div class="title">🗓 주간 식단 관리 &amp; 분석</div>
-      <div class="subtitle" id="headerSub">식단표 업로드 후 메뉴 선호도·중복 검토 결과를 확인합니다</div>
+      <div class="subtitle" id="headerSub">식단표 업로드 후 메뉴 중복 검토 및 심층 분석 결과를 확인합니다</div>
     </div>
   </div>
   <div class="header-actions">
@@ -968,27 +964,6 @@ function parseMenuExcel(arrayBuffer) {
 }
 
 /* ══════════════════════════════════════════════════
-   식수 교차 데이터 빌드
-══════════════════════════════════════════════════ */
-function buildDailyMap() {
-  const records = loadAllMealRecords();
-  const map = {}; // "M/D" → { actual, monthKey }
-  const monthAvg = {}; // "YYYY-MM" → avg actual
-
-  for (const [mk, rec] of Object.entries(records)) {
-    if (!rec.daily || !rec.daily.length) continue;
-    const actuals = rec.daily.map(d => d[2]).filter(v => v > 0);
-    if (!actuals.length) continue;
-    monthAvg[mk] = actuals.reduce((a,b)=>a+b,0) / actuals.length;
-    for (const [lbl,,actual] of rec.daily) {
-      const nd = normDayLabel(lbl);
-      map[`${mk}|${nd}`] = { actual, monthKey: mk };
-    }
-  }
-  return { map, monthAvg };
-}
-
-/* ══════════════════════════════════════════════════
    분석 엔진
 ══════════════════════════════════════════════════ */
 
@@ -1128,43 +1103,7 @@ function analyzeDuplicates(allMenus) {
   return dups;
 }
 
-function analyzePreference(allMenus, dailyMap, monthAvg) {
-  // { menuName → { scores: [], mealType } }
-  const scoreMap = {};
-
-  for (const wk of Object.values(allMenus)) {
-    const month = wk.month;
-    for (const day of (wk.days || [])) {
-      const md = isoToMD(day.date);
-      const key = `${month}|${md}`;
-      const entry = dailyMap[key];
-      if (!entry) continue;
-      const avg = monthAvg[month];
-      if (!avg) continue;
-      const score = entry.actual / avg;
-
-      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
-        for (const item of (day[mt] || [])) {
-          const nm = item.trim();
-          if (!nm) continue;
-          if (!scoreMap[nm]) scoreMap[nm] = { scores:[], mealType: mt, days:0 };
-          scoreMap[nm].scores.push(score);
-          scoreMap[nm].days++;
-        }
-      }
-    }
-  }
-
-  const result = {};
-  for (const [nm, d] of Object.entries(scoreMap)) {
-    if (d.scores.length < 1) continue;
-    const avg = d.scores.reduce((a,b)=>a+b,0) / d.scores.length;
-    result[nm] = { score: Math.round(avg * 100), count: d.days, mealType: d.mealType };
-  }
-  return result;
-}
-
-function generateFeedback(allMenus, freq, dups, pref) {
+function generateFeedback(allMenus, freq, dups) {
   const items = [];
 
   // 1. 중복 경보
@@ -1185,23 +1124,7 @@ function generateFeedback(allMenus, freq, dups, pref) {
     }
   }
 
-  // 2. 선호도 피드백
-  if (Object.keys(pref).length >= 3) {
-    const sorted = Object.entries(pref).sort((a,b)=>b[1].score-a[1].score);
-    const top = sorted.filter(([,d])=>d.score >= 105).slice(0, 5);
-    const low = sorted.filter(([,d])=>d.score <= 94).slice(-5);
-
-    if (top.length) {
-      const list = top.map(([n,d])=>`<strong>${n}</strong>(${d.score}%)`).join(', ');
-      items.push({ level:'green', text:`선호 메뉴 TOP: ${list} — 식수가 높은 날에 자주 제공된 메뉴입니다. 지속 편성을 권장합니다.` });
-    }
-    if (low.length) {
-      const list = low.reverse().map(([n,d])=>`<strong>${n}</strong>(${d.score}%)`).join(', ');
-      items.push({ level:'warn', text:`재검토 권장: ${list} — 식수가 낮은 날에 자주 등장한 메뉴입니다.` });
-    }
-  }
-
-  // 3. 구성 통계
+  // 2. 구성 통계
   const totalWeeks = Object.keys(allMenus).length;
   if (totalWeeks > 0) {
     let dayCount = 0, menuCounts = { breakfast:0, lunchA:0, lunchB:0, dinner:0 };
@@ -1316,7 +1239,6 @@ function checkCrossData(wkData) {
    렌더링 — 전체 분석
 ══════════════════════════════════════════════════ */
 let _freqChart = null;
-let _prefChart = null;
 let _deepChart = null;
 let _lastFreq = null;
 let _lastDups = null;
@@ -1339,10 +1261,7 @@ function renderAnalysis() {
   const freq = analyzeFrequency(allMenus);
   const dups = analyzeDuplicates(allMenus);
   _lastFreq = freq; _lastDups = dups; _lastAllMenus = allMenus;
-  const { map: dailyMap, monthAvg } = buildDailyMap();
-  const pref = analyzePreference(allMenus, dailyMap, monthAvg);
-  const feedback = generateFeedback(allMenus, freq, dups, pref);
-  const hasPref = Object.keys(pref).length >= 3;
+  const feedback = generateFeedback(allMenus, freq, dups);
 
   // Summary KPIs — 메인 메뉴 기준 (일반 반찬류 제외)
   let totalDays = 0, totalMenuItems = 0, uniqueMenus = new Set();
@@ -1387,7 +1306,6 @@ function renderAnalysis() {
       <button class="tab-item" onclick="showTab('dup',this)">🔄 중복 검토</button>
       <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
       <button class="tab-item" onclick="showTab('deep',this)">🔬 심층 분석</button>
-      ${hasPref ? '<button class="tab-item" onclick="showTab(\'pref\',this)">⭐ 선호도 분석</button>' : ''}
       <button class="tab-item" onclick="showTab('feedback',this)">💡 관리자 피드백</button>
     </div>
 
@@ -1395,7 +1313,6 @@ function renderAnalysis() {
     <div class="tab-content" id="tab-dup">${buildDupTab(dups)}</div>
     <div class="tab-content" id="tab-comp">${buildCompTab(allMenus, freq)}</div>
     <div class="tab-content" id="tab-deep">${buildDeepTab(allMenus)}</div>
-    ${hasPref ? `<div class="tab-content" id="tab-pref">${buildPrefTab(pref, Object.keys(pref).length)}</div>` : ''}
     <div class="tab-content" id="tab-feedback">${buildFeedbackTab(feedback)}</div>
   `;
 
@@ -1412,7 +1329,6 @@ function renderAnalysis() {
   requestAnimationFrame(() => {
     renderFreqCharts(freq);
     renderDeepCharts(allMenus);
-    if (hasPref) renderPrefChart(pref);
   });
 }
 
@@ -1429,9 +1345,6 @@ function showTab(name, btn) {
   }
   if (name === 'deep' && _deepChart) {
     requestAnimationFrame(() => _deepChart.forEach(c => c.resize()));
-  }
-  if (name === 'pref' && _prefChart) {
-    requestAnimationFrame(() => _prefChart.resize());
   }
 }
 
@@ -1993,45 +1906,6 @@ function renderFreqCharts(freq) {
   ];
 }
 
-function renderPrefChart(pref) {
-  const canvas = document.getElementById('prefChart');
-  if (!canvas) return;
-  const top = Object.entries(pref).sort((a,b)=>b[1].score-a[1].score).slice(0, 15);
-  const labels = top.map(([nm]) => nm);
-  const scores = top.map(([,d]) => d.score);
-  const colors = scores.map(s => s >= 105 ? '#16a34a99' : s <= 94 ? '#dc262699' : '#64748b66');
-  const borders = scores.map(s => s >= 105 ? '#16a34a' : s <= 94 ? '#dc2626' : '#64748b');
-
-  if (_prefChart) { _prefChart.destroy(); _prefChart = null; }
-  _prefChart = new Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        data: scores,
-        backgroundColor: colors,
-        borderColor: borders,
-        borderWidth: 1,
-        borderRadius: 4,
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: {
-          min: 70,
-          ticks: { callback: v => v + '%' },
-          grid: { color: '#e2e8f0' }
-        },
-        y: { ticks: { font: { size: 11 } } }
-      }
-    }
-  });
-}
-
 /* ── 중복 탭 ── */
 function buildDupTab(dups) {
   const months = Object.keys(dups).sort().reverse();
@@ -2185,42 +2059,6 @@ function buildCompTab(allMenus, freq) {
        + '</div>'
        + '<div class="comp-grid">' + cards + '</div>'
        + summaryHtml;
-}
-
-/* ── 선호도 탭 ── */
-function buildPrefTab(pref, count) {
-  const sorted = Object.entries(pref).sort((a,b)=>b[1].score-a[1].score);
-  const rows = sorted.map(([nm,d]) => {
-    const bar = Math.min(Math.max(d.score - 70, 0), 60);
-    const color = d.score >= 105 ? '#16a34a' : d.score <= 94 ? '#dc2626' : '#64748b';
-    const label = d.score >= 105 ? '선호' : d.score <= 94 ? '재검토' : '보통';
-    return `<tr>
-      <td>${nm}</td>
-      <td>${MEAL_LABELS[d.mealType]}</td>
-      <td>
-        <div class="pref-bar-wrap">
-          <div class="pref-bar-bg"><div class="pref-bar-fill" style="width:${bar/60*100}%;background:${color}"></div></div>
-          <span style="font-weight:700;color:${color};min-width:38px;text-align:right">${d.score}%</span>
-        </div>
-      </td>
-      <td><span class="badge" style="background:${color}22;color:${color}">${label}</span></td>
-      <td>${d.count}일</td>
-    </tr>`;
-  }).join('');
-
-  return `<div class="card">
-    <h3>메뉴 선호도 순위</h3>
-    <div class="desc">해당 메뉴 제공일의 실제 식수 ÷ 월 평균 식수 × 100. 100% 초과 = 식수 높은 날에 자주 등장</div>
-    <div class="note" style="margin-bottom:12px">⚠ 식수는 메뉴 외에도 요일·날씨·행사 등 다양한 요인의 영향을 받습니다. 참고 지표로 활용하세요.</div>
-    <div class="chart-wrap tall" style="margin-bottom:16px"><canvas id="prefChart"></canvas></div>
-    <div style="overflow-x:auto">
-      <table>
-        <thead><tr><th>메뉴</th><th>구분</th><th>선호도 지수</th><th>평가</th><th>분석일</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-    <div class="note-blue" style="margin-top:12px">식수 데이터가 등록된 월(${Object.keys(buildDailyMap().monthAvg).join(', ')})과 겹치는 식단에 한해 분석됩니다. 현재 ${count}개 메뉴 분석 완료.</div>
-  </div>`;
 }
 
 /* ── 피드백 탭 ── */
