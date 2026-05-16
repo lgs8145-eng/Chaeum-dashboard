@@ -225,7 +225,13 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .excl-bar{background:#f8fafc;border:1px solid var(--line);border-radius:10px;
   padding:12px 16px;margin-bottom:14px}
 .excl-bar-title{font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:8px;
-  display:flex;align-items:center;gap:6px}
+  display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+.excl-bar-title:hover{color:var(--ink)}
+.excl-bar-chevron{font-size:11px;color:var(--muted);transition:transform .2s;display:inline-block;margin-left:auto}
+.excl-bar.collapsed .excl-bar-chevron{transform:rotate(-90deg)}
+.excl-bar-body{overflow:hidden;transition:max-height .25s ease,opacity .2s ease;max-height:400px;opacity:1}
+.excl-bar.collapsed .excl-bar-body{max-height:0;opacity:0}
+.excl-bar.collapsed .excl-bar-title{margin-bottom:0}
 .excl-tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .excl-tag{display:inline-flex;align-items:center;gap:5px;background:var(--primary-light);
   border:1px solid var(--primary-mid);border-radius:20px;padding:3px 10px 3px 12px;
@@ -1013,22 +1019,26 @@ function removeExclKeyword(kw) {
 // 제외 키워드 바 HTML 생성
 function buildExclBar() {
   const kws = getExclKeywords();
+  const collapsed = localStorage.getItem('chaeum_excl_collapsed') === '1';
   const tags = kws.map(k =>
     `<span class="excl-tag">${escHtml(k)}<button class="excl-tag-x" onclick="onExclRemove('${escHtml(k).replace(/'/g,'&#39;')}')" title="제거">×</button></span>`
   ).join('');
   return `
-    <div class="excl-bar">
-      <div class="excl-bar-title">
+    <div class="excl-bar${collapsed ? ' collapsed' : ''}" id="exclBar">
+      <div class="excl-bar-title" onclick="toggleExclBar()">
         🚫 분석 제외 키워드
-        <span style="font-weight:400;color:var(--muted)">— 입력한 키워드가 포함된 메뉴는 모든 분석에서 제외됩니다</span>
-        ${kws.length ? `<button class="excl-reset" onclick="onExclReset()">전체 초기화</button>` : ''}
+        <span style="font-weight:400;color:var(--muted)">— 키워드 포함 메뉴는 모든 분석에서 제외</span>
+        ${kws.length ? `<button class="excl-reset" onclick="event.stopPropagation();onExclReset()">전체 초기화</button>` : ''}
+        <span class="excl-bar-chevron">▼</span>
       </div>
-      <div class="excl-tags" id="exclTags">
-        ${tags}
-        <input class="excl-input" id="exclInput" placeholder="키워드 입력 후 Enter"
-          onkeydown="if(event.key==='Enter'||event.key===','){event.preventDefault();onExclAdd()}"
-          autocomplete="off">
-        <button class="excl-add-btn" onclick="onExclAdd()">+ 추가</button>
+      <div class="excl-bar-body">
+        <div class="excl-tags" id="exclTags">
+          ${tags}
+          <input class="excl-input" id="exclInput" placeholder="키워드 입력 후 Enter"
+            onkeydown="if(event.key==='Enter'||event.key===','){event.preventDefault();onExclAdd()}"
+            autocomplete="off">
+          <button class="excl-add-btn" onclick="onExclAdd()">+ 추가</button>
+        </div>
       </div>
     </div>`;
 }
@@ -1057,6 +1067,13 @@ function onExclRemove(kw) {
 function onExclReset() {
   saveExclKeywords([]);
   renderAnalysis();
+}
+
+function toggleExclBar() {
+  const bar = document.getElementById('exclBar');
+  if (!bar) return;
+  const isCollapsed = bar.classList.toggle('collapsed');
+  localStorage.setItem('chaeum_excl_collapsed', isCollapsed ? '1' : '0');
 }
 
 function isSideDish(name) {
