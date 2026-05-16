@@ -1264,7 +1264,7 @@ let _lastAllMenus = null;
 function renderAnalysis() {
   // 현재 활성 탭 이름 저장 → 재렌더 후 복원
   const prevTab = document.querySelector('#analysisSection .tab-content.active')
-    ?.id?.replace('tab-', '') || 'freq';
+    ?.id?.replace('tab-', '') || 'deep';
 
   const allMenus = loadMenus();
   if (!Object.keys(allMenus).length) {
@@ -1318,16 +1318,16 @@ function renderAnalysis() {
     ${buildExclBar()}
 
     <div class="tab-bar">
+      <button class="tab-item" onclick="showTab('deep',this)">🔬 심층 분석</button>
+      <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
       <button class="tab-item" onclick="showTab('freq',this)">📊 메뉴 빈도</button>
       <button class="tab-item" onclick="showTab('dup',this)">🔄 중복 검토</button>
-      <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
-      <button class="tab-item" onclick="showTab('deep',this)">🔬 심층 분석</button>
     </div>
 
+    <div class="tab-content" id="tab-deep">${buildDeepTab(allMenus)}</div>
+    <div class="tab-content" id="tab-comp">${buildCompTab(allMenus, freq)}</div>
     <div class="tab-content" id="tab-freq">${buildFreqTab(freq)}</div>
     <div class="tab-content" id="tab-dup">${buildDupTab(dups)}</div>
-    <div class="tab-content" id="tab-comp">${buildCompTab(allMenus, freq)}</div>
-    <div class="tab-content" id="tab-deep">${buildDeepTab(allMenus)}</div>
   `;
 
   // 이전 탭 상태 복원 (없으면 freq 기본값)
