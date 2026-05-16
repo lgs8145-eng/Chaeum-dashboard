@@ -1317,6 +1317,7 @@ function checkCrossData(wkData) {
 ══════════════════════════════════════════════════ */
 let _freqChart = null;
 let _prefChart = null;
+let _deepChart = null;
 let _lastFreq = null;
 let _lastDups = null;
 let _lastAllMenus = null;
@@ -1385,6 +1386,7 @@ function renderAnalysis() {
       <button class="tab-item" onclick="showTab('freq',this)">📊 메뉴 빈도</button>
       <button class="tab-item" onclick="showTab('dup',this)">🔄 중복 검토</button>
       <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
+      <button class="tab-item" onclick="showTab('deep',this)">🔬 심층 분석</button>
       ${hasPref ? '<button class="tab-item" onclick="showTab(\'pref\',this)">⭐ 선호도 분석</button>' : ''}
       <button class="tab-item" onclick="showTab('feedback',this)">💡 관리자 피드백</button>
     </div>
@@ -1392,6 +1394,7 @@ function renderAnalysis() {
     <div class="tab-content" id="tab-freq">${buildFreqTab(freq)}</div>
     <div class="tab-content" id="tab-dup">${buildDupTab(dups)}</div>
     <div class="tab-content" id="tab-comp">${buildCompTab(allMenus, freq)}</div>
+    <div class="tab-content" id="tab-deep">${buildDeepTab(allMenus)}</div>
     ${hasPref ? `<div class="tab-content" id="tab-pref">${buildPrefTab(pref, Object.keys(pref).length)}</div>` : ''}
     <div class="tab-content" id="tab-feedback">${buildFeedbackTab(feedback)}</div>
   `;
@@ -1408,6 +1411,7 @@ function renderAnalysis() {
   // 차트는 다음 프레임에 렌더 — innerHTML 직후 canvas 크기가 확정되지 않아 발생하는 0-size 문제 방지
   requestAnimationFrame(() => {
     renderFreqCharts(freq);
+    renderDeepCharts(allMenus);
     if (hasPref) renderPrefChart(pref);
   });
 }
@@ -1419,9 +1423,12 @@ function showTab(name, btn) {
   if (tc) tc.classList.add('active');
   if (btn) btn.classList.add('active');
 
-  // 빈도·선호도 탭 전환 시: 숨겨진 상태로 렌더된 Chart.js를 강제 리사이즈
+  // 빈도·선호도·심층분석 탭 전환 시: 숨겨진 상태로 렌더된 Chart.js를 강제 리사이즈
   if (name === 'freq' && _freqChart) {
     requestAnimationFrame(() => _freqChart.forEach(c => c.resize()));
+  }
+  if (name === 'deep' && _deepChart) {
+    requestAnimationFrame(() => _deepChart.forEach(c => c.resize()));
   }
   if (name === 'pref' && _prefChart) {
     requestAnimationFrame(() => _prefChart.resize());
@@ -1610,6 +1617,300 @@ function buildCatDistHtml(freq) {
   return '<div class="card"><h3>메뉴 카테고리 분포</h3>'
     + '<div class="desc">조식·중식 A·B·석식 전체 · 메인 메뉴 기준</div>'
     + '<table><tbody>' + rows + '</tbody></table></div>';
+}
+
+/* ══ 심층 분석 — 주재료·조리방식·건강도·반복도·자극도·탄단지 ══ */
+
+// 주재료 분류
+const INGR_CATS = [
+  { label: '육류',      p: /돼지|삼겹|목살|제육|불고기|갈비|닭|치킨|오리|소고기|한우|베이컨|햄|소시지|스팸/ },
+  { label: '해산물',    p: /생선|연어|참치|고등어|삼치|갈치|임연수|황태|동태|코다리|명태|오징어|새우|낙지|쭈꾸미|조개|굴|전복|멸치|아귀|민어|미역국/ },
+  { label: '두부·달걀', p: /두부|달걀|계란|순두부|유부|콩비지|마파두부/ },
+  { label: '채소·나물', p: /나물$|나물무침|나물볶음|김치볶음(?!밥)|콩나물|시금치|도라지|더덕|취나물|숙주|깻잎|버섯볶음|표고볶음|느타리볶음|브로콜리|가지나물|호박볶음/ },
+  { label: '면·밥류',   p: /볶음밥|비빔밥|덮밥|파스타|우동|냉면|라멘|짜장|짬뽕|칼국수|수제비|만두|볶음면/ },
+];
+function classifyIngr(name) {
+  for (var ci = 0; ci < INGR_CATS.length; ci++) {
+    if (INGR_CATS[ci].p.test(name)) return INGR_CATS[ci].label;
+  }
+  return '기타';
+}
+
+// 조리방식 분류
+const COOK_CATS = [
+  { label: '국·탕·찌개',   p: /국$|국밥|탕$|찌개|전골|해장국|설렁탕|곰탕|삼계/ },
+  { label: '튀김·까스',    p: /튀김|까스|까츠|탕수|강정|너겟|치즈볼|유린기/ },
+  { label: '볶음',         p: /볶음(?!밥)|제육|쭈꾸미|낙지볶|오삼볶|잡채/ },
+  { label: '구이',         p: /구이|불고기|삼겹|갈비(?!찜)|스테이크|직화|바비큐/ },
+  { label: '찜·수육',      p: /찜|수육|족발|보쌈/ },
+  { label: '조림',         p: /조림/ },
+  { label: '무침·샐러드',  p: /무침|샐러드|생채|겉절이/ },
+];
+function classifyCook(name) {
+  for (var ci = 0; ci < COOK_CATS.length; ci++) {
+    if (COOK_CATS[ci].p.test(name)) return COOK_CATS[ci].label;
+  }
+  return '기타';
+}
+
+// 건강도
+const HIGH_CAL_P = /튀김|까스|치킨|삼겹|강정|너겟|피자|버거|족발|보쌈/;
+const HEALTHY_P  = /나물|샐러드|두부(?!조림)|생선구이|채소|찜(?!닭)|미역국|순두부|청경채/;
+function healthLabel(name) {
+  if (HIGH_CAL_P.test(name)) return '고열량';
+  if (HEALTHY_P.test(name))  return '건강';
+  return '보통';
+}
+
+// 자극도
+const SPICY_P = /김치찌개|제육|쭈꾸미|낙지볶|마파두부|불닭|청양|오삼볶|부대찌|매운/;
+const SALTY_P = /장아찌|젓갈|짜장|명란|간장조림|된장조림|멸치조림|멸치볶음/;
+
+// 탄단지 추정
+function classifyNutr(name) {
+  if (/볶음밥|비빔밥|파스타|우동|냉면|라멘|짜장|짬뽕|칼국수|수제비|만두|볶음면/.test(name)) return '탄수화물';
+  if (/불고기|삼겹|갈비|생선|연어|참치|고등어|닭(?!볶음밥)|오리|두부|달걀|계란|새우|오징어|수육|족발/.test(name)) return '단백질';
+  if (/나물|찌개|채소찜|샐러드|채소볶음/.test(name)) return '균형';
+  return '기타';
+}
+
+// 주차 내 메인 메뉴 목록 반환
+function getWkItems(wk) {
+  var items = [];
+  var mts = ['breakfast','lunchA','lunchB','dinner'];
+  for (var di = 0; di < (wk.days||[]).length; di++) {
+    var day = wk.days[di];
+    for (var mi = 0; mi < mts.length; mi++) {
+      for (var ii = 0; ii < (day[mts[mi]]||[]).length; ii++) {
+        var n = day[mts[mi]][ii].trim();
+        if (n && !isSideDish(n)) items.push(n);
+      }
+    }
+  }
+  return items;
+}
+
+function buildDeepTab(allMenus) {
+  var sortedWks = Object.values(allMenus).sort(function(a,b) {
+    return (a.weekStart||'').localeCompare(b.weekStart||'');
+  });
+  var last4 = sortedWks.slice(-4);
+  var last2 = sortedWks.slice(-2);
+
+  var allItems = [];
+  for (var wi = 0; wi < sortedWks.length; wi++) {
+    var wkI = getWkItems(sortedWks[wi]);
+    for (var ii = 0; ii < wkI.length; ii++) allItems.push(wkI[ii]);
+  }
+  if (!allItems.length) return '<div class="empty-state"><div class="icon">📭</div><p>분석할 메뉴 데이터가 없습니다.</p></div>';
+
+  var total = allItems.length;
+  function p(v) { return total ? Math.round(v / total * 100) : 0; }
+
+  var healthCnts = {'고열량':0,'보통':0,'건강':0};
+  var nutrCnts   = {'탄수화물':0,'단백질':0,'균형':0,'기타':0};
+  var spicyCnt = 0, saltyCnt = 0;
+  for (var i = 0; i < allItems.length; i++) {
+    var nm = allItems[i];
+    healthCnts[healthLabel(nm)]++;
+    nutrCnts[classifyNutr(nm)]++;
+    if (SPICY_P.test(nm)) spicyCnt++;
+    if (SALTY_P.test(nm)) saltyCnt++;
+  }
+
+  // 최근 4주 주재료 반복률
+  var ingrWeekCnt = {};
+  for (var wi4 = 0; wi4 < last4.length; wi4++) {
+    var wkItems4 = getWkItems(last4[wi4]);
+    var seen4 = {};
+    for (var ii4 = 0; ii4 < wkItems4.length; ii4++) {
+      var cat4 = classifyIngr(wkItems4[ii4]);
+      if (!seen4[cat4]) { ingrWeekCnt[cat4] = (ingrWeekCnt[cat4]||0) + 1; seen4[cat4] = true; }
+    }
+  }
+  var ingrTypes = Object.keys(ingrWeekCnt);
+  var repeatedIngr = ingrTypes.filter(function(c) { return ingrWeekCnt[c] >= 3; });
+  var ingrRepeatRate = ingrTypes.length ? Math.round(repeatedIngr.length / ingrTypes.length * 100) : 0;
+
+  // 최근 2주 조리방식 중복률
+  var cookW = last2.map(function(wk) {
+    var s = {};
+    getWkItems(wk).forEach(function(nm) { s[classifyCook(nm)] = true; });
+    return s;
+  });
+  var cookAll = cookW.length >= 2
+    ? Object.keys(Object.assign({}, cookW[0], cookW[1]))
+    : Object.keys(cookW[0] || {});
+  var cookOverlap = cookW.length >= 2
+    ? cookAll.filter(function(c) { return cookW[0][c] && cookW[1][c]; })
+    : [];
+  var cookOverlapRate = cookAll.length ? Math.round(cookOverlap.length / cookAll.length * 100) : 0;
+
+  function rateColor(rate, lo, hi) {
+    return rate <= lo ? 'var(--good)' : rate <= hi ? 'var(--warn)' : 'var(--bad)';
+  }
+  function rateBadge(rate, lo, hi, labels) {
+    return rate <= lo ? labels[0] : rate <= hi ? labels[1] : labels[2];
+  }
+
+  var ingrC  = rateColor(ingrRepeatRate, 30, 60);
+  var cookC  = rateColor(cookOverlapRate, 50, 75);
+  var hcPct  = p(healthCnts['고열량']);
+  var hhPct  = p(healthCnts['건강']);
+  var hbPct  = p(healthCnts['보통']);
+  var highC  = rateColor(hcPct, 20, 35);
+  var hlthC  = hhPct >= 25 ? 'var(--good)' : hhPct >= 15 ? 'var(--warn)' : 'var(--bad)';
+  var spicyC = rateColor(p(spicyCnt), 25, 40);
+  var saltyC = rateColor(p(saltyCnt), 15, 30);
+  var protR  = p(nutrCnts['단백질']);
+  var carbR  = p(nutrCnts['탄수화물']);
+  var balR   = p(nutrCnts['균형']);
+  var nutrScore = Math.min(100, Math.round(protR * 1.5 + balR));
+  var nutrScoreC = nutrScore >= 50 ? 'var(--good)' : nutrScore >= 30 ? 'var(--warn)' : 'var(--bad)';
+
+  function kpiBar(label, rate, color, sub) {
+    return '<div style="margin-bottom:12px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">'
+      + '<span style="font-size:13px;font-weight:600">' + label + '</span>'
+      + '<span style="font-size:17px;font-weight:700;color:' + color + '">' + rate + '%'
+      + (sub ? '<span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:5px">' + sub + '</span>' : '')
+      + '</span></div>'
+      + '<div style="background:#e2e8f0;border-radius:4px;height:10px">'
+      + '<div style="background:' + color + ';border-radius:4px;height:10px;width:' + Math.min(rate, 100) + '%"></div>'
+      + '</div></div>';
+  }
+
+  function kpiCard(label, val, sub, color, badge) {
+    return '<div class="card">'
+      + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500">' + label + '</div>'
+      + '<div style="font-size:28px;font-weight:700;color:' + color + '">' + val + '</div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'
+      + '<span style="font-size:11.5px;color:var(--muted)">' + sub + '</span>'
+      + '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;'
+      + 'background:' + color + '20;color:' + color + '">' + badge + '</span>'
+      + '</div></div>';
+  }
+
+  return ''
+    + '<div class="note-blue" style="margin-bottom:14px">'
+    + '메뉴명 키워드 기반 <strong>휴리스틱 분류</strong>입니다. 탄단지·건강도는 방향성 지표로만 활용하세요.'
+    + '</div>'
+
+    // 행 1: 주재료 + 조리방식 차트
+    + '<div class="row cols-2">'
+    + '<div class="card"><h3>주재료 분류 비율</h3>'
+    + '<div class="desc">전체 기간 메인 메뉴 기준 · 육류/해산물/채소·나물/두부·달걀/면·밥/기타</div>'
+    + '<div class="chart-wrap"><canvas id="deepIngrChart"></canvas></div></div>'
+    + '<div class="card"><h3>조리방식 분포</h3>'
+    + '<div class="desc">전체 기간 메인 메뉴 기준 · 국탕/튀김/볶음/구이/찜·수육/조림/무침/기타</div>'
+    + '<div class="chart-wrap"><canvas id="deepCookChart"></canvas></div></div>'
+    + '</div>'
+
+    // 행 2: 반복도 + 건강도 KPI 카드 4개
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px">'
+    + kpiCard('주재료 반복률', ingrRepeatRate + '%', '최근 4주', ingrC,
+        rateBadge(ingrRepeatRate, 30, 60, ['다양함','주의','편중']))
+    + kpiCard('조리방식 중복', cookOverlapRate + '%', '최근 2주', cookC,
+        rateBadge(cookOverlapRate, 50, 75, ['다양함','주의','편중']))
+    + kpiCard('고열량 메뉴', hcPct + '%', '전체 기간', highC,
+        rateBadge(hcPct, 20, 35, ['양호','주의','과다']))
+    + kpiCard('건강 메뉴', hhPct + '%', '전체 기간', hlthC,
+        hhPct >= 25 ? '충분' : hhPct >= 15 ? '보통' : '부족')
+    + '</div>'
+
+    // 행 3: 건강도 시각화 + 탄단지 추정
+    + '<div class="row cols-2">'
+    + '<div class="card">'
+    + '<h3>건강도 분포</h3>'
+    + '<div class="desc">건강 / 보통 / 고열량 비율 · 자극도 분포</div>'
+    + '<div style="display:flex;height:28px;border-radius:6px;overflow:hidden;margin-bottom:8px">'
+    + '<div style="flex:' + hhPct + ';background:var(--good);display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:700">' + (hhPct > 8 ? hhPct + '%' : '') + '</div>'
+    + '<div style="flex:' + hbPct + ';background:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:700">' + (hbPct > 8 ? hbPct + '%' : '') + '</div>'
+    + '<div style="flex:' + hcPct + ';background:var(--bad);display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:700">' + (hcPct > 8 ? hcPct + '%' : '') + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:14px;font-size:12px;margin-bottom:18px">'
+    + '<span style="color:var(--good)">● 건강 ' + hhPct + '%</span>'
+    + '<span style="color:#94a3b8">● 보통 ' + hbPct + '%</span>'
+    + '<span style="color:var(--bad)">● 고열량 ' + hcPct + '%</span>'
+    + '</div>'
+    + kpiBar('매운 편중 메뉴', p(spicyCnt), spicyC, p(spicyCnt) <= 25 ? '적정' : p(spicyCnt) <= 40 ? '주의' : '편중')
+    + kpiBar('짜거나 자극적 메뉴', p(saltyCnt), saltyC, '')
+    + '</div>'
+
+    + '<div class="card">'
+    + '<h3>탄단지 구성 추정</h3>'
+    + '<div class="desc">메뉴명 기반 추정 · 실제 영양 수치와 다를 수 있음</div>'
+    + kpiBar('단백질 공급 메뉴', protR, rateColor(100 - protR, 40, 70), '육류·해산물·두부·달걀')
+    + kpiBar('탄수화물 편중 메뉴', carbR, rateColor(carbR, 25, 40), '면·밥류')
+    + kpiBar('균형 메뉴', balR, rateColor(100 - balR, 60, 80), '나물·찌개·채소')
+    + '<div style="margin-top:16px;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid var(--line)">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">단백질 충족 지수</div>'
+    + '<div style="font-size:26px;font-weight:700;color:' + nutrScoreC + '">' + nutrScore
+    + '<span style="font-size:13px;font-weight:400;color:var(--muted)"> / 100</span></div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-top:4px">단백질+균형 메뉴 비율 기반 추정 · 높을수록 단백질 다양성 양호</div>'
+    + '</div></div>'
+    + '</div>';
+}
+
+function renderDeepCharts(allMenus) {
+  var sortedWks = Object.values(allMenus).sort(function(a,b) {
+    return (a.weekStart||'').localeCompare(b.weekStart||'');
+  });
+  var allItems = [];
+  for (var wi = 0; wi < sortedWks.length; wi++) {
+    var wkI = getWkItems(sortedWks[wi]);
+    for (var ii = 0; ii < wkI.length; ii++) allItems.push(wkI[ii]);
+  }
+  if (!allItems.length) return;
+
+  var ingrDist = {}, cookDist = {};
+  for (var i = 0; i < allItems.length; i++) {
+    var ing  = classifyIngr(allItems[i]);
+    var cook = classifyCook(allItems[i]);
+    ingrDist[ing]  = (ingrDist[ing]||0)  + 1;
+    cookDist[cook] = (cookDist[cook]||0) + 1;
+  }
+
+  var INGR_ORDER  = ['육류','해산물','두부·달걀','채소·나물','면·밥류','기타'];
+  var INGR_COLORS = ['#FF5500','#0891b2','#f59e0b','#16a34a','#7c3aed','#94a3b8'];
+  var COOK_ORDER  = ['국·탕·찌개','볶음','구이','튀김·까스','찜·수육','조림','무침·샐러드','기타'];
+  var COOK_COLORS = ['#0891b2','#FF5500','#FF8855','#dc2626','#7c3aed','#d97706','#16a34a','#94a3b8'];
+
+  function mkDataset(order, colors, dist) {
+    var labels = order.filter(function(k) { return dist[k]; });
+    var data   = labels.map(function(k) { return dist[k]; });
+    var clrs   = labels.map(function(k) { return colors[order.indexOf(k)]; });
+    return { labels: labels, data: data, colors: clrs };
+  }
+
+  var ingrDs = mkDataset(INGR_ORDER, INGR_COLORS, ingrDist);
+  var cookDs = mkDataset(COOK_ORDER, COOK_COLORS, cookDist);
+
+  if (_deepChart) { _deepChart.forEach(function(c) { c.destroy(); }); }
+  _deepChart = [];
+
+  var ingrEl = document.getElementById('deepIngrChart');
+  var cookEl = document.getElementById('deepCookChart');
+  if (!ingrEl || !cookEl) return;
+
+  var ttl = allItems.length;
+  var baseOpts = {
+    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: function(c) {
+        return c.raw + '회 (' + Math.round(c.raw / ttl * 100) + '%)';
+      }}}},
+    scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { font: { size: 12 } } } }
+  };
+
+  _deepChart.push(
+    new Chart(ingrEl, { type: 'bar', data: { labels: ingrDs.labels,
+      datasets: [{ data: ingrDs.data, backgroundColor: ingrDs.colors, borderRadius: 4, borderSkipped: false }] },
+      options: baseOpts }),
+    new Chart(cookEl, { type: 'bar', data: { labels: cookDs.labels,
+      datasets: [{ data: cookDs.data, backgroundColor: cookDs.colors, borderRadius: 4, borderSkipped: false }] },
+      options: baseOpts })
+  );
 }
 
 /* ── 빈도 탭 ── */
