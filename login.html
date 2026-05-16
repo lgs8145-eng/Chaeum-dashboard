@@ -4,197 +4,106 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>로그인 — 채움 운영 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          'hecto-orange': {
+            DEFAULT: '#FF5500',
+            50:  '#FFF2ED',
+            100: '#FFD4C2',
+            400: '#FF8855',
+            600: '#FF5500',
+            700: '#E04A00',
+            900: '#992E00',
+          },
+        },
+        fontFamily: {
+          sans: ['"Noto Sans KR"', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
 <script src="auth.js"></script>
 <script>(async function(){const s=await authGetSession();if(s)window.location.replace('index.html');})();</script>
-<style>
-:root {
-  --bg:#f5f7fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
-  --primary:#2563eb; --good:#16a34a; --bad:#dc2626;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{
-  min-height:100vh;
-  background:var(--bg);
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
-  color:var(--ink);
-  padding:20px;
-}
-.login-wrap{width:100%;max-width:400px}
-
-.brand{text-align:center;margin-bottom:24px}
-.brand-icon{font-size:48px;line-height:1;margin-bottom:10px}
-.brand-name{font-size:22px;font-weight:700;letter-spacing:-.3px}
-.brand-sub{color:var(--muted);font-size:13px;margin-top:5px}
-
-.login-card{
-  background:var(--card);
-  border:1px solid var(--line);
-  border-radius:16px;
-  padding:28px 24px 24px;
-  box-shadow:0 4px 24px rgba(15,23,42,.08);
-}
-
-.role-toggle{
-  display:flex;
-  background:#f1f5f9;
-  border-radius:10px;
-  padding:4px;
-  margin-bottom:22px;
-  gap:2px;
-}
-.role-btn{
-  flex:1;
-  padding:9px 0;
-  border:none;
-  background:transparent;
-  border-radius:7px;
-  font-size:14px;
-  font-weight:500;
-  color:var(--muted);
-  cursor:pointer;
-  transition:all .15s;
-  font-family:inherit;
-}
-.role-btn.active{
-  background:#fff;
-  color:var(--ink);
-  box-shadow:0 1px 4px rgba(15,23,42,.1);
-  font-weight:600;
-}
-
-.field{margin-bottom:14px}
-.field label{
-  display:block;
-  font-size:11px;
-  font-weight:600;
-  color:var(--muted);
-  margin-bottom:6px;
-  text-transform:uppercase;
-  letter-spacing:.4px;
-}
-.field input{
-  width:100%;
-  padding:11px 14px;
-  border:1px solid var(--line);
-  border-radius:8px;
-  font-size:14px;
-  font-family:inherit;
-  color:var(--ink);
-  background:#fff;
-  outline:none;
-  transition:border-color .15s, box-shadow .15s;
-}
-.field input:focus{
-  border-color:var(--primary);
-  box-shadow:0 0 0 3px rgba(37,99,235,.12);
-}
-
-.viewer-hint{
-  font-size:12px;
-  color:var(--muted);
-  margin-top:-4px;
-  margin-bottom:14px;
-  padding:8px 12px;
-  background:#f8fafc;
-  border-radius:6px;
-  border-left:3px solid var(--line);
-  line-height:1.5;
-}
-
-.error-msg{
-  background:#fef2f2;
-  color:var(--bad);
-  border:1px solid #fecaca;
-  border-radius:8px;
-  padding:10px 14px;
-  font-size:13px;
-  margin-bottom:14px;
-  display:none;
-}
-
-.login-btn{
-  width:100%;
-  padding:12px 0;
-  background:var(--primary);
-  color:#fff;
-  border:none;
-  border-radius:8px;
-  font-size:15px;
-  font-weight:600;
-  font-family:inherit;
-  cursor:pointer;
-  transition:background .15s, opacity .15s;
-  margin-top:4px;
-}
-.login-btn:hover{background:#1d4ed8}
-.login-btn:disabled{opacity:.55;cursor:not-allowed}
-
-.footer-note{
-  text-align:center;
-  font-size:12px;
-  color:var(--muted);
-  margin-top:20px;
-}
-</style>
 </head>
-<body>
-<div class="login-wrap">
+<body class="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans text-slate-900 p-5">
+<div class="w-full max-w-sm">
 
-  <div class="brand">
-    <div class="brand-icon">🍽️</div>
-    <div class="brand-name">구내식당(채움)</div>
-    <div class="brand-sub">운영 대시보드</div>
+  <div class="text-center mb-6">
+    <div class="text-5xl leading-none mb-2">🍽️</div>
+    <div class="text-xl font-bold tracking-tight">구내식당(채움)</div>
+    <div class="text-slate-500 text-sm mt-1">운영 대시보드</div>
   </div>
 
-  <div class="login-card">
-    <div class="role-toggle">
-      <button class="role-btn active" id="adminBtn" onclick="switchMode('admin')">🔑 관리자</button>
-      <button class="role-btn" id="viewerBtn" onclick="switchMode('viewer')">👁 열람</button>
+  <div class="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
+    <div class="flex bg-slate-100 rounded-xl p-1 mb-5 gap-1">
+      <button id="adminBtn" onclick="switchMode('admin')"
+        class="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all bg-white text-slate-900 shadow-sm">
+        🔑 관리자
+      </button>
+      <button id="viewerBtn" onclick="switchMode('viewer')"
+        class="flex-1 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-500">
+        👁 열람
+      </button>
     </div>
 
     <!-- 관리자 폼 -->
     <div id="adminForm">
-      <div class="field">
-        <label>아이디</label>
-        <input type="text" id="adminId" placeholder="관리자 아이디" autocomplete="username">
+      <div class="mb-3.5">
+        <label class="block text-[11px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">아이디</label>
+        <input type="text" id="adminId" placeholder="관리자 아이디" autocomplete="username"
+          class="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 bg-white outline-none transition focus:border-hecto-orange focus:ring-2 focus:ring-hecto-orange/20">
       </div>
-      <div class="field">
-        <label>비밀번호</label>
-        <input type="password" id="adminPw" placeholder="비밀번호" autocomplete="current-password">
+      <div class="mb-3.5">
+        <label class="block text-[11px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">비밀번호</label>
+        <input type="password" id="adminPw" placeholder="비밀번호" autocomplete="current-password"
+          class="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 bg-white outline-none transition focus:border-hecto-orange focus:ring-2 focus:ring-hecto-orange/20">
       </div>
     </div>
 
     <!-- 열람 폼 -->
-    <div id="viewerForm" style="display:none">
-      <div class="field">
-        <label>열람 비밀번호</label>
-        <input type="password" id="viewerPw" placeholder="열람 비밀번호 입력" autocomplete="current-password">
+    <div id="viewerForm" class="hidden">
+      <div class="mb-3.5">
+        <label class="block text-[11px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">열람 비밀번호</label>
+        <input type="password" id="viewerPw" placeholder="열람 비밀번호 입력" autocomplete="current-password"
+          class="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 bg-white outline-none transition focus:border-hecto-orange focus:ring-2 focus:ring-hecto-orange/20">
       </div>
-      <div class="viewer-hint">열람 모드에서는 데이터 조회 및 PDF 다운로드만 가능합니다.<br>데이터 업로드·수정은 관리자 모드에서 이용하세요.</div>
+      <div class="text-xs text-slate-500 -mt-1 mb-3.5 px-3 py-2 bg-slate-50 rounded-md border-l-2 border-slate-300 leading-relaxed">
+        열람 모드에서는 데이터 조회 및 PDF 다운로드만 가능합니다.<br>데이터 업로드·수정은 관리자 모드에서 이용하세요.
+      </div>
     </div>
 
-    <div class="error-msg" id="loginError"></div>
+    <div id="loginError" class="hidden bg-red-50 text-red-600 border border-red-200 rounded-lg px-3.5 py-2.5 text-sm mb-3.5"></div>
 
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">로그인</button>
+    <button id="loginBtn" onclick="doLogin()"
+      class="w-full py-3 bg-hecto-orange hover:bg-hecto-orange-700 text-white rounded-lg text-[15px] font-semibold mt-1 transition disabled:opacity-55 disabled:cursor-not-allowed">
+      로그인
+    </button>
   </div>
 
-  <div class="footer-note">ⓒ 2026 채움 구내식당 운영팀</div>
+  <div class="text-center text-xs text-slate-400 mt-5">ⓒ 2026 채움 구내식당 운영팀</div>
 </div>
 
 <script>
 let _mode = 'admin';
 
+const CLS_ACTIVE   = 'flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all bg-white text-slate-900 shadow-sm';
+const CLS_INACTIVE = 'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-500';
+
 function switchMode(mode) {
   _mode = mode;
-  document.getElementById('adminForm').style.display  = mode === 'admin' ? '' : 'none';
-  document.getElementById('viewerForm').style.display = mode === 'viewer' ? '' : 'none';
-  document.getElementById('adminBtn').className = 'role-btn' + (mode === 'admin' ? ' active' : '');
-  document.getElementById('viewerBtn').className = 'role-btn' + (mode === 'viewer' ? ' active' : '');
-  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('adminForm').classList.toggle('hidden', mode !== 'admin');
+  document.getElementById('viewerForm').classList.toggle('hidden', mode !== 'viewer');
+  document.getElementById('loginError').classList.add('hidden');
+  document.getElementById('adminBtn').className  = mode === 'admin'  ? CLS_ACTIVE : CLS_INACTIVE;
+  document.getElementById('viewerBtn').className = mode === 'viewer' ? CLS_ACTIVE : CLS_INACTIVE;
   const target = mode === 'admin' ? 'adminId' : 'viewerPw';
   setTimeout(() => { const el = document.getElementById(target); if (el) el.focus(); }, 0);
 }
@@ -226,7 +135,7 @@ async function doLogin() {
       ? '아이디 또는 비밀번호가 올바르지 않습니다.'
       : '비밀번호가 올바르지 않습니다.';
   }
-  errEl.style.display = 'block';
+  errEl.classList.remove('hidden');
   btn.disabled = false;
   btn.textContent = '로그인';
   const focusEl = document.getElementById(_mode === 'admin' ? 'adminPw' : 'viewerPw');

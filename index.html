@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>구내식당(채움) 운영 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="auth.js"></script>
 <script>
 /* 인증 확인 — 서버 쿠키 검증 후 페이지 표시 */
@@ -20,10 +23,11 @@
 <style>
 :root {
   --bg:#f5f7fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
-  --primary:#2563eb; --good:#16a34a; --bad:#dc2626; --warn:#d97706;
+  --primary:#FF5500; --primary-hover:#E04A00; --primary-light:#FFF2ED; --primary-mid:#FFD4C2;
+  --good:#16a34a; --bad:#dc2626; --warn:#d97706;
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+body{margin:0;font-family:'Noto Sans KR',-apple-system,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
   background:var(--bg);color:var(--ink);line-height:1.45}
 .shell{max-width:1320px;margin:0 auto;padding:28px 24px 60px}
 
@@ -41,9 +45,9 @@ body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Got
 .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;
   font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap}
 .btn-primary{background:var(--primary);color:#fff}
-.btn-primary:hover{background:#1d4ed8}
+.btn-primary:hover{background:var(--primary-hover)}
 .btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary)}
-.btn-outline:hover{background:#eff6ff}
+.btn-outline:hover{background:var(--primary-light)}
 .btn-ghost{background:#f1f5f9;color:var(--muted);border:1px solid var(--line)}
 .btn-ghost:hover{background:#e2e8f0}
 .btn-danger{background:#fff;color:var(--bad);border:1px solid #fecaca}
@@ -93,7 +97,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .pill.up{background:#fee2e2;color:#991b1b}
 .pill.down{background:#dcfce7;color:#166534}
 .pill.flat{background:#e2e8f0;color:#475569}
-.pill.blue{background:#dbeafe;color:#1d4ed8}
+.pill.blue{background:var(--primary-light);color:var(--primary-hover)}
 
 /* ── Compare grid ── */
 .compare-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px}
@@ -104,34 +108,34 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 
 /* ── Notes ── */
 .note{background:#fef3c7;border-left:3px solid var(--warn);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#78350f;margin-top:10px}
-.note-blue{background:#eff6ff;border-left:3px solid var(--primary);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#1e40af;margin-top:10px}
+.note-blue{background:var(--primary-light);border-left:3px solid var(--primary);padding:10px 14px;border-radius:6px;font-size:12.5px;color:var(--primary-hover);margin-top:10px}
 
 /* ── Metric cards ── */
 .metric-card{padding:14px 18px;border-radius:10px;transition:all .15s;position:relative;cursor:pointer}
-.metric-card:hover{background:rgba(255,255,255,.6);transform:translateY(-1px);box-shadow:0 2px 8px rgba(30,64,175,.15)}
+.metric-card:hover{background:rgba(255,255,255,.6);transform:translateY(-1px);box-shadow:0 2px 8px rgba(255,85,0,.15)}
 .metric-card::after{content:'🔍';position:absolute;top:8px;right:10px;font-size:12px;opacity:0;transition:opacity .15s}
 .metric-card:hover::after{opacity:.6}
 
 /* ── 업로드 드래그존 ── */
-.drop-zone{border:2px dashed #bfdbfe;background:#f0f9ff;border-radius:12px;
+.drop-zone{border:2px dashed var(--primary-mid);background:var(--primary-light);border-radius:12px;
   padding:40px 24px;text-align:center;transition:all .2s;cursor:pointer}
-.drop-zone:hover,.drop-zone.drag-over{border-color:var(--primary);background:#dbeafe}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--primary);background:var(--primary-mid)}
 .drop-zone .icon{font-size:40px;margin-bottom:10px}
-.drop-zone .main-text{font-size:15px;font-weight:600;color:#1e40af;margin-bottom:6px}
+.drop-zone .main-text{font-size:15px;font-weight:600;color:var(--primary-hover);margin-bottom:6px}
 .drop-zone .sub-text{font-size:13px;color:var(--muted)}
 
 /* 업로드 결과 */
 .upload-result{display:none;border-radius:10px;padding:14px 16px;margin-top:14px;font-size:13.5px}
 .upload-result.success{background:#dcfce7;border:1px solid #86efac;color:#166534;display:block}
 .upload-result.error{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;display:block}
-.upload-result.info{background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;display:block}
+.upload-result.info{background:var(--primary-light);border:1px solid var(--primary-mid);color:var(--primary-hover);display:block}
 
 /* 등록된 월 목록 */
 .month-list-item{display:flex;justify-content:space-between;align-items:center;
   padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:13px}
 .month-list-item .badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
 .badge-base{background:#e2e8f0;color:#475569}
-.badge-upload{background:#dbeafe;color:#1d4ed8}
+.badge-upload{background:var(--primary-light);color:var(--primary)}
 
 /* ── Modal ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;
@@ -149,10 +153,10 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
   padding:0;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center}
 .modal-close:hover{background:#f1f5f9}
 .modal-body{padding:20px 24px}
-.formula-box{background:linear-gradient(135deg,#eff6ff,#fef3c7);border:1px solid #bfdbfe;
+.formula-box{background:linear-gradient(135deg,var(--primary-light),#fef3c7);border:1px solid var(--primary-mid);
   border-radius:10px;padding:16px;margin-bottom:18px;text-align:center}
-.formula-box .formula{font-size:15px;font-weight:600;color:#1e40af;font-family:monospace}
-.formula-box .result{font-size:24px;font-weight:700;color:#1e40af;margin-top:8px}
+.formula-box .formula{font-size:15px;font-weight:600;color:var(--primary-hover);font-family:monospace}
+.formula-box .result{font-size:24px;font-weight:700;color:var(--primary-hover);margin-top:8px}
 .modal-section{margin-top:18px}
 .modal-section h4{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted);
   text-transform:uppercase;letter-spacing:.4px}
@@ -160,9 +164,9 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 /* ── PDF 인쇄 토스트 ── */
 @keyframes fadeInDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeOut{from{opacity:1}to{opacity:0}}
-.pdf-toast{position:fixed;top:24px;right:24px;z-index:5000;background:#1e40af;color:#fff;
+.pdf-toast{position:fixed;top:24px;right:24px;z-index:5000;background:var(--primary-hover);color:#fff;
   padding:14px 20px;border-radius:12px;font-size:14px;font-weight:600;
-  box-shadow:0 8px 28px rgba(30,64,175,.35);display:flex;align-items:center;gap:12px;
+  box-shadow:0 8px 28px rgba(255,85,0,.35);display:flex;align-items:center;gap:12px;
   animation:fadeInDown .3s ease}
 .pdf-toast.hiding{animation:fadeOut .3s ease forwards}
 .pdf-toast-icon{font-size:22px}
@@ -186,7 +190,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
   .shell { max-width: 100% !important; padding: 0 !important; }
 
   /* 헤더 */
-  .header { margin-bottom: 12px; padding-bottom: 7px; border-bottom: 3px solid #2563eb; }
+  .header { margin-bottom: 12px; padding-bottom: 7px; border-bottom: 3px solid #FF5500; }
   .title  { font-size: 19px !important; }
   .subtitle { font-size: 11px !important; }
 
@@ -241,7 +245,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 /* ── 사용자 정보 / 로그아웃 ── */
 .user-info{display:flex;align-items:center;gap:8px;margin-left:4px}
 .role-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
-.role-badge.admin{background:#eff6ff;color:var(--primary);border:1px solid #bfdbfe}
+.role-badge.admin{background:var(--primary-light);color:var(--primary);border:1px solid var(--primary-mid)}
 .role-badge.viewer{background:#f0fdf4;color:var(--good);border:1px solid #bbf7d0}
 .btn-logout{background:#fff;color:var(--muted);border:1px solid var(--line);padding:5px 12px;font-size:12px}
 .btn-logout:hover{background:#f1f5f9;color:var(--ink)}
@@ -260,7 +264,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .pw-field{margin-bottom:12px}
 .pw-field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px}
 .pw-field input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
-.pw-field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.pw-field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(255,85,0,.1)}
 .pw-result{border-radius:8px;padding:10px 14px;font-size:13px;margin-top:4px;display:none}
 .pw-result.success{background:#f0fdf4;color:var(--good);border:1px solid #bbf7d0}
 .pw-result.error{background:#fef2f2;color:var(--bad);border:1px solid #fecaca}
@@ -587,8 +591,8 @@ const BASE_OPTS = {
   responsive: true, maintainAspectRatio: false,
   plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 10, padding: 10 } } }
 };
-const PALETTE = ['#2563eb','#7c3aed','#16a34a','#d97706','#0891b2','#db2777','#65a30d','#9333ea','#0d9488','#ea580c','#475569'];
-const SUP_COLORS = ['#2563eb','#7c3aed','#0891b2','#d97706','#16a34a','#fca5a5'];
+const PALETTE = ['#FF5500','#7c3aed','#16a34a','#d97706','#0891b2','#db2777','#65a30d','#9333ea','#0d9488','#ea580c','#475569'];
+const SUP_COLORS = ['#FF5500','#7c3aed','#0891b2','#d97706','#16a34a','#fca5a5'];
 
 /* ══════════════════════════════════════════════════
    초기화
@@ -654,7 +658,7 @@ function renderCumulative() {
   const supply = keys.map(k => Math.round(rec(k).cost.total / 1000));
 
   setChart('trendSupplyChart', {
-    type:'bar', data:{ labels, datasets:[{ label:'공급가액(천원)', data:supply, backgroundColor:'#2563eb', borderRadius:6 }] },
+    type:'bar', data:{ labels, datasets:[{ label:'공급가액(천원)', data:supply, backgroundColor:'#FF5500', borderRadius:6 }] },
     options:{ ...BASE_OPTS, scales:{ y:{ ticks:{ callback:v=>fmt(v)+'천' } } },
       plugins:{ ...BASE_OPTS.plugins, legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)+'천원'}} } }
   });
@@ -711,7 +715,7 @@ function renderYTD() {
     data:{
       labels:[`식재료비 ${p(ytdFood)}%`,`인건비 ${p(ytdLabor)}%`,`경비 ${p(ytdOpex)}%`,`운영관리비 ${p(ytdMgmt)}%`],
       datasets:[{ data:[ytdFood,ytdLabor,ytdOpex,ytdMgmt],
-        backgroundColor:['#2563eb','#7c3aed','#d97706','#16a34a'] }]
+        backgroundColor:['#FF5500','#7c3aed','#d97706','#16a34a'] }]
     },
     options:{ ...BASE_OPTS, cutout:'62%',
       plugins:{ ...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.label.split(' ')[0]+': '+fmt천(c.raw)+'천원'}} } }
@@ -719,7 +723,7 @@ function renderYTD() {
 
   // 연누계 원가 항목별 테이블
   const ytdItems = [
-    {label:'식재료비',   val:ytdFood,  color:'#2563eb'},
+    {label:'식재료비',   val:ytdFood,  color:'#FF5500'},
     {label:'인건비',     val:ytdLabor, color:'#7c3aed'},
     {label:'경비',       val:ytdOpex,  color:'#d97706'},
     {label:'운영관리비', val:ytdMgmt,  color:'#16a34a'},
@@ -780,28 +784,28 @@ function renderKPIs(r, pr) {
       <div class="val">${fmt(perMeal)}<span class="unit">원</span></div>
       ${deltaHtml(perMeal, pr ? Math.round(pr.cost.total/pr.meals.actual) : null)}
     </div>
-    <div class="kpi" style="grid-column:1/-1;background:linear-gradient(135deg,#eff6ff 0%,#fef3c7 100%);border:1px solid #bfdbfe;padding:14px 20px">
+    <div class="kpi" style="grid-column:1/-1;background:linear-gradient(135deg,#FFF2ED 0%,#fef3c7 100%);border:1px solid #FFD4C2;padding:14px 20px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:13px;color:#1e40af;font-weight:600">🥗 식자재비 핵심 단가 지표</div>
-        <div style="font-size:11px;color:#1e40af;background:#fff;padding:3px 10px;border-radius:12px;border:1px solid #bfdbfe">💡 카드 클릭 시 산출 상세</div>
+        <div style="font-size:13px;color:#E04A00;font-weight:600">🥗 식자재비 핵심 단가 지표</div>
+        <div style="font-size:11px;color:#E04A00;background:#fff;padding:3px 10px;border-radius:12px;border:1px solid #FFD4C2">💡 카드 클릭 시 산출 상세</div>
       </div>
       <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:14px">
         <div class="metric-card" data-modal="m1">
-          <div class="lbl" style="color:#1e40af">1인 월 식자재비</div>
-          <div class="val" style="font-size:28px;color:#1e40af">${fmt(ppFood)}<span class="unit">원/인</span></div>
-          <div style="font-size:11.5px;color:#1e40af;margin-top:4px">${fmt천(r.cost.food)}천 ÷ ${fmt(r.headcount)}명</div>
+          <div class="lbl" style="color:#E04A00">1인 월 식자재비</div>
+          <div class="val" style="font-size:28px;color:#E04A00">${fmt(ppFood)}<span class="unit">원/인</span></div>
+          <div style="font-size:11.5px;color:#E04A00;margin-top:4px">${fmt천(r.cost.food)}천 ÷ ${fmt(r.headcount)}명</div>
         </div>
-        <div class="metric-card" data-modal="m2" style="border-left:1px solid #bfdbfe">
+        <div class="metric-card" data-modal="m2" style="border-left:1px solid #FFD4C2">
           <div class="lbl">1인 일 식자재비</div>
           <div class="val" style="font-size:22px">${fmt(ppDay)}<span class="unit">원/인일</span></div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">영업일 ${r.businessDays}일 기준</div>
         </div>
-        <div class="metric-card" data-modal="m3" style="border-left:1px solid #bfdbfe">
+        <div class="metric-card" data-modal="m3" style="border-left:1px solid #FFD4C2">
           <div class="lbl">1식당 식자재비</div>
           <div class="val" style="font-size:22px">${fmt(pmFood)}<span class="unit">원/식</span></div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">실제 식수 ${fmt(r.meals.actual)}식 기준</div>
         </div>
-        <div class="metric-card" data-modal="m4" style="border-left:1px solid #bfdbfe">
+        <div class="metric-card" data-modal="m4" style="border-left:1px solid #FFD4C2">
           <div class="lbl">1인 평균 식수</div>
           <div class="val" style="font-size:22px">${avgMeals}<span class="unit">식/인</span></div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">월 평균 이용 횟수</div>
@@ -823,7 +827,7 @@ function renderCostStack(r, pr) {
 
   setChart('costStackChart', {
     type:'bar', data:{ labels, datasets:[
-      {label:'식재료비',   data:mk('food'),  backgroundColor:'#2563eb', stack:'s'},
+      {label:'식재료비',   data:mk('food'),  backgroundColor:'#FF5500', stack:'s'},
       {label:'인건비',     data:mk('labor'), backgroundColor:'#7c3aed', stack:'s'},
       {label:'경비',       data:mk('opex'),  backgroundColor:'#d97706', stack:'s'},
       {label:'운영관리비', data:mk('mgmt'),  backgroundColor:'#16a34a', stack:'s'}
@@ -876,10 +880,10 @@ function renderRamen(r) {
       <div style="font-size:24px;font-weight:700;color:#9a3412;margin-top:4px">${fmt(rm.totalCost)}<span style="font-size:12px;font-weight:500">원</span></div>
       <div style="font-size:11px;color:#9a3412;margin-top:2px">전체 식자재비의 ${ratio}%</div>
     </div>
-    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
-      <div style="font-size:11px;color:#1e40af;font-weight:600">라면 1식당 직접 식자재비</div>
-      <div style="font-size:24px;font-weight:700;color:#1e40af;margin-top:4px">${fmt(pm)}<span style="font-size:12px;font-weight:500">원/식</span></div>
-      <div style="font-size:11px;color:#1e40af;margin-top:2px">라면 식수 ${fmt(rm.mealCount)}식 기준</div>
+    <div style="background:#FFF2ED;border:1px solid #FFD4C2;border-radius:10px;padding:14px">
+      <div style="font-size:11px;color:#E04A00;font-weight:600">라면 1식당 직접 식자재비</div>
+      <div style="font-size:24px;font-weight:700;color:#E04A00;margin-top:4px">${fmt(pm)}<span style="font-size:12px;font-weight:500">원/식</span></div>
+      <div style="font-size:11px;color:#E04A00;margin-top:2px">라면 식수 ${fmt(rm.mealCount)}식 기준</div>
     </div>`;
   document.getElementById('ramenTableBody').innerHTML = rm.items.map(it=>
     `<tr><td>${it.date}</td><td style="text-align:left">${it.item}</td><td>${fmt(it.amount)}</td></tr>`).join('');
@@ -892,7 +896,7 @@ function renderPerMealCategory(r) {
     type:'bar',
     data:{labels:[...cats.map(c=>c.label),'전체 평균'],
       datasets:[{label:'1식당 식자재비(원)',data:[...cats.map(c=>c.perMeal),Math.round(tc/tm)],
-        backgroundColor:['#2563eb','#16a34a','#d97706','#94a3b8'],borderRadius:6}]},
+        backgroundColor:['#FF5500','#16a34a','#d97706','#94a3b8'],borderRadius:6}]},
     options:{...BASE_OPTS, indexAxis:'y', scales:{x:{ticks:{callback:v=>fmt(v)+'원'}}},
       plugins:{...BASE_OPTS.plugins, legend:{display:false}, tooltip:{callbacks:{label:c=>'1식당: '+fmt(c.raw)+'원'}}}}
   });
@@ -919,7 +923,7 @@ function renderMealMix(r) {
   setChart('mealMixChart', {
     type:'doughnut',
     data:{labels:r.mealMix.labels, datasets:[{data:r.mealMix.values,
-      backgroundColor:['#2563eb','#7c3aed','#0891b2','#d97706','#16a34a','#db2777','#475569']}]},
+      backgroundColor:['#FF5500','#7c3aed','#0891b2','#d97706','#16a34a','#db2777','#475569']}]},
     options:{...BASE_OPTS, cutout:'55%',
       plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.raw)+'식'}}}}
   });
@@ -937,8 +941,8 @@ function renderDaily(r) {
     data:{labels:r.daily.map(d=>d[0]), datasets:[
       {label:'준비 식수',data:r.daily.map(d=>d[1]),borderColor:'#94a3b8',backgroundColor:'rgba(148,163,184,.1)',
         borderDash:[5,3],fill:false,tension:.3,pointRadius:3},
-      {label:'실제 식수',data:r.daily.map(d=>d[2]),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.15)',
-        fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#2563eb',borderWidth:2.5}
+      {label:'실제 식수',data:r.daily.map(d=>d[2]),borderColor:'#FF5500',backgroundColor:'rgba(255,85,0,.12)',
+        fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#FF5500',borderWidth:2.5}
     ]},
     options:{...BASE_OPTS, scales:{y:{beginAtZero:false,ticks:{callback:v=>fmt(v)+'식'}}},
       plugins:{...BASE_OPTS.plugins, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)+'식'}}}}
@@ -975,7 +979,7 @@ function renderWeekdayPattern(r) {
     var wd2 = WD_ORDER[j], avg = avgs[j];
     if (!avg) continue;
     var pct   = Math.round(avg / maxAvg * 100);
-    var color = avg === maxAvg ? '#2563eb' : avg === minAvg ? '#94a3b8' : '#60a5fa';
+    var color = avg === maxAvg ? '#FF5500' : avg === minAvg ? '#94a3b8' : '#FF8855';
     barsHtml += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
       + '<div style="width:22px;text-align:center;font-weight:700;font-size:13px;color:var(--ink)">' + wd2 + '</div>'
       + '<div style="flex:1;background:#e2e8f0;border-radius:4px;height:22px;position:relative">'
@@ -986,7 +990,7 @@ function renderWeekdayPattern(r) {
   }
 
   card.innerHTML = '<h3>요일별 평균 식수 패턴</h3>'
-    + '<div class="desc">' + r.label + ' · 실제 식수 기준 · 최다 요일 <span style="color:#2563eb;font-weight:600">파랑</span></div>'
+    + '<div class="desc">' + r.label + ' · 실제 식수 기준 · 최다 요일 <span style="color:#FF5500;font-weight:600">주황</span></div>'
     + '<div style="margin-top:14px;max-width:520px">' + barsHtml + '</div>';
 }
 
@@ -1028,14 +1032,14 @@ function openKpiModal(key, r) {
       <div class="modal-section"><h4>정산 인원</h4>
         <div style="background:#f8fafc;border-radius:8px;padding:12px;font-size:13px;line-height:1.8">
           재직 <strong>${fmt(r.headcountDetail.onsite)}명</strong> — 휴직 ${r.headcountDetail.leave}명, 외부근무 ${r.headcountDetail.offsite}명 제외<br>
-          정산 적용: <strong style="color:#1e40af">${fmt(r.headcountDetail.applied)}명</strong>
+          정산 적용: <strong style="color:#E04A00">${fmt(r.headcountDetail.applied)}명</strong>
         </div></div>`},
     m2:{title:'1인 일 식자재비 산출',sub:'1인 월 식자재비 ÷ 영업일수',
       formula:`${fmt(ppFood)}원/인 ÷ ${r.businessDays}일`, result:`= ${fmt(ppDay)}원/인일`,
       body:`<div class="modal-section"><h4>산출 내역</h4>
         <div style="background:#f8fafc;border-radius:8px;padding:14px;font-size:13px;line-height:1.9">
           1인 월 식자재비: <strong>${fmt(ppFood)}원</strong><br>영업일수: <strong>${r.businessDays}일</strong><br>
-          1인 일 식자재비: <strong style="color:#1e40af">${fmt(ppDay)}원/인일</strong><br>
+          1인 일 식자재비: <strong style="color:#E04A00">${fmt(ppDay)}원/인일</strong><br>
           1일 평균 총 식자재비: ${fmt(Math.round(r.cost.food/r.businessDays))}원/일
         </div></div>`},
     m3:{title:'1식당 식자재비 산출',sub:'식자재비 ÷ 실제 식수',
@@ -1053,9 +1057,9 @@ function openKpiModal(key, r) {
         <tfoot><tr><td>합계</td><td>${fmt(r.meals.prepared)}</td><td>${fmt(r.meals.actual)}</td><td>${(r.meals.actual/r.meals.prepared*100).toFixed(1)}%</td></tr></tfoot>
       </table>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
-        <div style="background:#eff6ff;border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:#1e40af;font-weight:600">월 평균 1인 식수</div>
-          <div style="font-size:20px;font-weight:700;color:#1e40af">${avgMeals}식/인</div>
+        <div style="background:#FFF2ED;border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:#E04A00;font-weight:600">월 평균 1인 식수</div>
+          <div style="font-size:20px;font-weight:700;color:#E04A00">${avgMeals}식/인</div>
         </div>
         <div style="background:#fef3c7;border-radius:8px;padding:12px">
           <div style="font-size:11px;color:#92400e;font-weight:600">일 평균 총 식수</div>

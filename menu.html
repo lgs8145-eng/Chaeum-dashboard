@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>식단 분석 — 채움 운영 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="auth.js"></script>
 <script>
 (async function(){
@@ -18,9 +21,10 @@
 <script src="data.js"></script>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;
-  --primary:#2563eb;--good:#16a34a;--bad:#dc2626;--warn:#d97706}
+  --primary:#FF5500;--primary-hover:#E04A00;--primary-light:#FFF2ED;--primary-mid:#FFD4C2;
+  --good:#16a34a;--bad:#dc2626;--warn:#d97706}
 *{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+body{margin:0;font-family:'Noto Sans KR',-apple-system,'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
   background:var(--bg);color:var(--ink);line-height:1.45}
 .shell{max-width:1280px;margin:0 auto;padding:24px 20px 60px}
 
@@ -38,8 +42,8 @@ body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Got
 /* Buttons */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;
   font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;font-family:inherit}
-.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:#1d4ed8}
-.btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary)}.btn-outline:hover{background:#eff6ff}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-hover)}
+.btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary)}.btn-outline:hover{background:var(--primary-light)}
 .btn-ghost{background:#f1f5f9;color:var(--muted);border:1px solid var(--line)}.btn-ghost:hover{background:#e2e8f0}
 .btn-danger{background:#fff;color:var(--bad);border:1px solid #fecaca}.btn-danger:hover{background:#fef2f2}
 .btn-sm{padding:4px 10px;font-size:12px}
@@ -59,16 +63,16 @@ body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Got
 .cols-3{grid-template-columns:1fr 1fr 1fr}
 
 /* Upload */
-.drop-zone{border:2px dashed #bfdbfe;background:#f0f9ff;border-radius:12px;
+.drop-zone{border:2px dashed var(--primary-mid);background:var(--primary-light);border-radius:12px;
   padding:36px 24px;text-align:center;cursor:pointer;transition:all .2s}
-.drop-zone:hover,.drop-zone.drag-over{border-color:var(--primary);background:#dbeafe}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--primary);background:var(--primary-mid)}
 .drop-zone .icon{font-size:38px;margin-bottom:8px}
-.drop-zone .main-text{font-size:15px;font-weight:600;color:#1e40af;margin-bottom:4px}
+.drop-zone .main-text{font-size:15px;font-weight:600;color:var(--primary-hover);margin-bottom:4px}
 .drop-zone .sub-text{font-size:12.5px;color:var(--muted)}
 .upload-result{display:none;border-radius:10px;padding:12px 16px;margin-top:12px;font-size:13px}
 .upload-result.success{background:#dcfce7;border:1px solid #86efac;color:#166534;display:block}
 .upload-result.error{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;display:block}
-.upload-result.info{background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;display:block}
+.upload-result.info{background:var(--primary-light);border:1px solid var(--primary-mid);color:var(--primary-hover);display:block}
 
 /* Week list */
 .week-group{margin-bottom:8px}
@@ -83,10 +87,10 @@ body{margin:0;font-family:-apple-system,'Segoe UI','Malgun Gothic','Apple SD Got
 .week-item{display:flex;justify-content:space-between;align-items:center;
   padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:4px;font-size:13px;
   border:1px solid var(--line);cursor:pointer;transition:background .15s}
-.week-item:hover{background:#eff6ff}
+.week-item:hover{background:var(--primary-light)}
 .week-item-right{display:flex;align-items:center;gap:8px}
 .badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
-.badge-blue{background:#dbeafe;color:#1d4ed8}
+.badge-blue{background:var(--primary-light);color:var(--primary)}
 .badge-green{background:#dcfce7;color:#166534}
 .badge-warn{background:#fef3c7;color:#92400e}
 .badge-red{background:#fee2e2;color:#991b1b}
@@ -116,14 +120,14 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 
 /* Note */
 .note{background:#fef3c7;border-left:3px solid var(--warn);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#78350f;margin-top:10px}
-.note-blue{background:#eff6ff;border-left:3px solid var(--primary);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#1e40af;margin-top:10px}
+.note-blue{background:var(--primary-light);border-left:3px solid var(--primary);padding:10px 14px;border-radius:6px;font-size:12.5px;color:var(--primary-hover);margin-top:10px}
 .note-green{background:#f0fdf4;border-left:3px solid var(--good);padding:10px 14px;border-radius:6px;font-size:12.5px;color:#166534;margin-top:10px}
 
 /* Feedback items */
 .feedback-item{padding:12px 16px;border-radius:10px;margin-bottom:10px;font-size:13.5px;line-height:1.6}
 .fb-red{background:#fef2f2;border:1px solid #fecaca;border-left:4px solid var(--bad)}
 .fb-warn{background:#fffbeb;border:1px solid #fde68a;border-left:4px solid var(--warn)}
-.fb-blue{background:#eff6ff;border:1px solid #bfdbfe;border-left:4px solid var(--primary)}
+.fb-blue{background:var(--primary-light);border:1px solid var(--primary-mid);border-left:4px solid var(--primary)}
 .fb-green{background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid var(--good)}
 .fb-muted{background:#f8fafc;border:1px solid var(--line);border-left:4px solid #94a3b8}
 .fb-title{font-weight:700;margin-bottom:4px}
@@ -155,12 +159,12 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .kpi-mini .val{font-size:20px;font-weight:700}
 .kpi-mini .unit{font-size:12px;color:var(--muted);margin-left:2px}
 .kpi-mini.clickable{cursor:pointer;transition:box-shadow .15s,border-color .15s,transform .12s}
-.kpi-mini.clickable:hover{border-color:var(--primary);box-shadow:0 2px 10px rgba(59,130,246,.18);transform:translateY(-1px)}
+.kpi-mini.clickable:hover{border-color:var(--primary);box-shadow:0 2px 10px rgba(255,85,0,.18);transform:translateY(-1px)}
 .kpi-mini.clickable .lbl::after{content:" ↗";font-size:9px;opacity:.5}
 /* KPI 상세 모달 테이블 */
 .kpi-detail-table{width:100%;border-collapse:collapse;font-size:13px}
-.kpi-detail-table th{background:#eff6ff;color:#1e40af;font-weight:600;padding:8px 12px;
-  text-align:left;border:1px solid #bfdbfe;font-size:12px;white-space:nowrap}
+.kpi-detail-table th{background:var(--primary-light);color:var(--primary-hover);font-weight:600;padding:8px 12px;
+  text-align:left;border:1px solid var(--primary-mid);font-size:12px;white-space:nowrap}
 .kpi-detail-table td{padding:8px 12px;border:1px solid var(--line);vertical-align:middle}
 .kpi-detail-table tbody tr:hover{background:#f8fafc}
 .kpi-detail-section{margin-bottom:18px}
@@ -206,7 +210,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .menu-field textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;
   font-size:13px;font-family:inherit;resize:vertical;min-height:60px;outline:none;
   transition:border-color .15s,box-shadow .15s;line-height:1.5}
-.menu-field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.menu-field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(255,85,0,.1)}
 .menu-field .hint{font-size:11.5px;color:var(--muted);margin-top:3px}
 .week-input-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
 .week-input-row label{font-size:13px;font-weight:600;white-space:nowrap}
@@ -227,10 +231,10 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .excl-bar-title{font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:8px;
   display:flex;align-items:center;gap:6px}
 .excl-tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.excl-tag{display:inline-flex;align-items:center;gap:5px;background:#eff6ff;
-  border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px 3px 12px;
-  font-size:12px;color:#1e40af;white-space:nowrap}
-.excl-tag-x{cursor:pointer;color:#93c5fd;font-size:14px;line-height:1;padding:0 2px}
+.excl-tag{display:inline-flex;align-items:center;gap:5px;background:var(--primary-light);
+  border:1px solid var(--primary-mid);border-radius:20px;padding:3px 10px 3px 12px;
+  font-size:12px;color:var(--primary-hover);white-space:nowrap}
+.excl-tag-x{cursor:pointer;color:var(--primary);font-size:14px;line-height:1;padding:0 2px}
 .excl-tag-x:hover{color:var(--bad)}
 .excl-input{border:1px solid var(--line);border-radius:20px;padding:3px 12px;
   font-size:12.5px;font-family:inherit;outline:none;width:140px;color:var(--ink);
@@ -238,7 +242,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 .excl-input:focus{border-color:var(--primary)}
 .excl-add-btn{background:var(--primary);color:#fff;border:none;border-radius:20px;
   padding:3px 12px;font-size:12px;cursor:pointer;font-family:inherit}
-.excl-add-btn:hover{background:#1d4ed8}
+.excl-add-btn:hover{background:var(--primary-hover)}
 .excl-reset{font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline;
   margin-left:4px;background:none;border:none;font-family:inherit}
 .excl-reset:hover{color:var(--bad)}
@@ -1597,7 +1601,7 @@ function buildCatDistHtml(freq) {
     rows += '<tr>'
       + '<td style="min-width:100px;font-weight:500">' + catName + '</td>'
       + '<td style="width:99%"><div style="background:#e2e8f0;border-radius:3px;height:10px;width:100%;min-width:80px">'
-      + '<div style="background:#3b82f6;border-radius:3px;height:10px;width:' + pct + '%"></div>'
+      + '<div style="background:#FF5500;border-radius:3px;height:10px;width:' + pct + '%"></div>'
       + '</div></td>'
       + '<td style="text-align:right;min-width:36px">' + pct + '%</td>'
       + '<td style="text-align:right;min-width:50px;color:var(--muted)">' + catCnt + '회</td>'
@@ -1684,7 +1688,7 @@ function renderFreqCharts(freq) {
   if (_freqChart) { _freqChart.forEach(c=>c.destroy()); _freqChart = []; }
   _freqChart = [
     new Chart(c1, { type:'bar', data:{ labels:d1.labels, datasets:[{data:d1.data,backgroundColor:'#f59e0b88',borderColor:'#f59e0b',borderWidth:1,borderRadius:4}]}, options:opts('#f59e0b') }),
-    new Chart(c2, { type:'bar', data:{ labels:d2.labels, datasets:[{data:d2.data,backgroundColor:'#3b82f688',borderColor:'#3b82f6',borderWidth:1,borderRadius:4}]}, options:opts('#3b82f6') }),
+    new Chart(c2, { type:'bar', data:{ labels:d2.labels, datasets:[{data:d2.data,backgroundColor:'#FF550088',borderColor:'#FF5500',borderWidth:1,borderRadius:4}]}, options:opts('#FF5500') }),
   ];
 }
 
