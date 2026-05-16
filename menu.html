@@ -269,6 +269,15 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 <!-- Upload result toast -->
 <div class="upload-result" id="uploadResult"></div>
 
+<!-- ══ 분석 ══ -->
+<div class="section-label" id="analysisLabel">📊 식단 분석</div>
+<div id="analysisSection">
+  <div class="empty-state" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:50px 20px">
+    <div class="icon">📈</div>
+    <p>식단표를 등록하면 분석 결과가 표시됩니다.</p>
+  </div>
+</div>
+
 <!-- ══ 등록된 식단 ══ -->
 <div class="section-label">📋 등록된 주간 식단표</div>
 <div class="row cols-1">
@@ -290,15 +299,6 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
         <p>등록된 식단표가 없습니다.<br>엑셀 파일을 업로드하거나 직접 입력해주세요.</p>
       </div>
     </div>
-  </div>
-</div>
-
-<!-- ══ 분석 ══ -->
-<div class="section-label" id="analysisLabel">📊 식단 분석</div>
-<div id="analysisSection">
-  <div class="empty-state" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:50px 20px">
-    <div class="icon">📈</div>
-    <p>식단표를 등록하면 분석 결과가 표시됩니다.</p>
   </div>
 </div>
 
@@ -1261,7 +1261,6 @@ function renderAnalysis() {
   const freq = analyzeFrequency(allMenus);
   const dups = analyzeDuplicates(allMenus);
   _lastFreq = freq; _lastDups = dups; _lastAllMenus = allMenus;
-  const feedback = generateFeedback(allMenus, freq, dups);
 
   // Summary KPIs — 메인 메뉴 기준 (일반 반찬류 제외)
   let totalDays = 0, totalMenuItems = 0, uniqueMenus = new Set();
@@ -1306,14 +1305,12 @@ function renderAnalysis() {
       <button class="tab-item" onclick="showTab('dup',this)">🔄 중복 검토</button>
       <button class="tab-item" onclick="showTab('comp',this)">🥗 구성 분석</button>
       <button class="tab-item" onclick="showTab('deep',this)">🔬 심층 분석</button>
-      <button class="tab-item" onclick="showTab('feedback',this)">💡 관리자 피드백</button>
     </div>
 
     <div class="tab-content" id="tab-freq">${buildFreqTab(freq)}</div>
     <div class="tab-content" id="tab-dup">${buildDupTab(dups)}</div>
     <div class="tab-content" id="tab-comp">${buildCompTab(allMenus, freq)}</div>
     <div class="tab-content" id="tab-deep">${buildDeepTab(allMenus)}</div>
-    <div class="tab-content" id="tab-feedback">${buildFeedbackTab(feedback)}</div>
   `;
 
   // 이전 탭 상태 복원 (없으면 freq 기본값)
