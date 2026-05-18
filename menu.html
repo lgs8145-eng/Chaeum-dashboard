@@ -1100,19 +1100,35 @@ function analyzeFrequency(allMenus) {
   return freq;
 }
 
+function _periodLabel(dateStr) {
+  if (!dateStr) return dateStr;
+  const parts = dateStr.split('-');
+  if (parts.length === 3) return parts[0] + '년 ' + parseInt(parts[1]) + '월 ' + parseInt(parts[2]) + '일';
+  return dateStr;
+}
+
 function analyzeDuplicates(allMenus) {
-  // { "YYYY-MM" → { mealType → { menuName → count } } } — 메인 메뉴만 집계
+  // 2주 단위 쌍으로 묶어 중복 집계 { "weekStart1~weekStart2" → { mealType → { menuName → count } } }
+  const sortedWks = Object.values(allMenus).sort(function(a, b) {
+    return (a.weekStart || '').localeCompare(b.weekStart || '');
+  });
   const dups = {};
-  for (const wk of Object.values(allMenus)) {
-    const month = wk.month;
-    if (!month) continue;
-    if (!dups[month]) dups[month] = { breakfast:{}, lunchA:{}, lunchB:{}, dinner:{} };
-    for (const day of (wk.days || [])) {
-      for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
-        for (const item of (day[mt] || [])) {
-          const key = item.trim();
-          if (!key || isSideDish(key)) continue;
-          dups[month][mt][key] = (dups[month][mt][key] || 0) + 1;
+  for (let i = 0; i < sortedWks.length; i += 2) {
+    const wk1 = sortedWks[i];
+    const wk2 = i + 1 < sortedWks.length ? sortedWks[i + 1] : null;
+    const k1 = wk1.weekStart || wk1.label || String(i);
+    const k2 = wk2 ? (wk2.weekStart || wk2.label || String(i + 1)) : k1;
+    const periodKey = k1 + '~' + k2;
+    const periodWks = wk2 ? [wk1, wk2] : [wk1];
+    dups[periodKey] = { breakfast:{}, lunchA:{}, lunchB:{}, dinner:{} };
+    for (const wk of periodWks) {
+      for (const day of (wk.days || [])) {
+        for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
+          for (const item of (day[mt] || [])) {
+            const key = item.trim();
+            if (!key || isSideDish(key)) continue;
+            dups[periodKey][mt][key] = (dups[periodKey][mt][key] || 0) + 1;
+          }
         }
       }
     }
@@ -1124,19 +1140,20 @@ function generateFeedback(allMenus, freq, dups) {
   const items = [];
 
   // 1. 중복 경보
-  for (const [month, mtMap] of Object.entries(dups)) {
-    const [y,m] = month.split('-');
-    const label = `${y}년 ${+m}월`;
+  for (const [period, mtMap] of Object.entries(dups)) {
+    const parts = period.split('~');
+    const k1 = parts[0] || period, k2 = parts[1] || k1;
+    const label = k1 === k2 ? _periodLabel(k1) : _periodLabel(k1) + '~' + _periodLabel(k2);
     for (const [mt, counts] of Object.entries(mtMap)) {
       const alerts = Object.entries(counts).filter(([,c]) => c >= 3).sort((a,b)=>b[1]-a[1]);
       const warns  = Object.entries(counts).filter(([,c]) => c === 2);
       if (alerts.length) {
         const list = alerts.map(([n,c])=>`<strong>${n}</strong>(${c}회)`).join(', ');
-        items.push({ level:'red', text:`${label} ${MEAL_LABELS[mt]}: ${list} — 3회 이상 중복 제공됩니다. 메뉴 교체를 검토하세요.` });
+        items.push({ level:'red', text:`${label} ${MEAL_LABELS[mt]}: ${list} — 2주 내 3회 이상 중복 제공됩니다. 메뉴 교체를 검토하세요.` });
       }
       if (warns.length) {
         const list = warns.map(([n])=>`<strong>${n}</strong>`).join(', ');
-        items.push({ level:'warn', text:`${label} ${MEAL_LABELS[mt]}: ${list} — 2회 제공됩니다.` });
+        items.push({ level:'warn', text:`${label} ${MEAL_LABELS[mt]}: ${list} — 2주 내 2회 제공됩니다.` });
       }
     }
   }
@@ -1621,7 +1638,6 @@ function buildDeepTab(allMenus) {
   var sortedWks = Object.values(allMenus).sort(function(a,b) {
     return (a.weekStart||'').localeCompare(b.weekStart||'');
   });
-  var last4 = sortedWks.slice(-4);
   var last2 = sortedWks.slice(-2);
 
   var allItems = [];
@@ -1645,10 +1661,10 @@ function buildDeepTab(allMenus) {
     if (SALTY_P.test(nm)) saltyCnt++;
   }
 
-  // 최근 4주 주재료 반복률
+  // 최근 2주 주재료 반복률
   var ingrWeekCnt = {};
-  for (var wi4 = 0; wi4 < last4.length; wi4++) {
-    var wkItems4 = getWkItems(last4[wi4]);
+  for (var wi4 = 0; wi4 < last2.length; wi4++) {
+    var wkItems4 = getWkItems(last2[wi4]);
     var seen4 = {};
     for (var ii4 = 0; ii4 < wkItems4.length; ii4++) {
       var cat4 = classifyIngr(wkItems4[ii4]);
@@ -1656,7 +1672,7 @@ function buildDeepTab(allMenus) {
     }
   }
   var ingrTypes = Object.keys(ingrWeekCnt);
-  var repeatedIngr = ingrTypes.filter(function(c) { return ingrWeekCnt[c] >= 3; });
+  var repeatedIngr = ingrTypes.filter(function(c) { return ingrWeekCnt[c] >= 2; });
   var ingrRepeatRate = ingrTypes.length ? Math.round(repeatedIngr.length / ingrTypes.length * 100) : 0;
 
   // 최근 2주 조리방식 중복률
@@ -1738,7 +1754,7 @@ function buildDeepTab(allMenus) {
 
     // 행 2: 반복도 + 건강도 KPI 카드 4개
     + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px">'
-    + kpiCard('주재료 반복률', ingrRepeatRate + '%', '최근 4주', ingrC,
+    + kpiCard('주재료 반복률', ingrRepeatRate + '%', '최근 2주', ingrC,
         rateBadge(ingrRepeatRate, 30, 60, ['다양함','주의','편중']), 'ingr')
     + kpiCard('조리방식 중복', cookOverlapRate + '%', '최근 2주', cookC,
         rateBadge(cookOverlapRate, 50, 75, ['다양함','주의','편중']), 'cook')
@@ -1859,12 +1875,12 @@ function showDeepKpiDetail(type) {
 
   if (type === 'ingr') {
     title = '주재료 반복률 상세';
-    var recent4  = sortedWks.slice(-4);
-    var wkLabels = recent4.map(function(wk) { return wk.label || wk.weekStart || ''; });
+    var recentIngr = sortedWks.slice(-2);
+    var wkLabels = recentIngr.map(function(wk) { return wk.label || wk.weekStart || ''; });
 
-    // 카테고리별로 어느 주차에 등장했는지 기록 (인덱스 0~3)
+    // 카테고리별로 어느 주차에 등장했는지 기록 (인덱스 0~1)
     var ingrWks = {};
-    recent4.forEach(function(wk, wi) {
+    recentIngr.forEach(function(wk, wi) {
       getWkItems(wk).forEach(function(name) {
         var cat = classifyIngr(name);
         if (!ingrWks[cat]) ingrWks[cat] = [];
@@ -1874,7 +1890,7 @@ function showDeepKpiDetail(type) {
 
     // 메뉴명별 반복 주차 수
     var menuWks = {};
-    recent4.forEach(function(wk, wi) {
+    recentIngr.forEach(function(wk, wi) {
       getWkItems(wk).forEach(function(name) {
         if (!menuWks[name]) menuWks[name] = [];
         if (menuWks[name].indexOf(wi) === -1) menuWks[name].push(wi);
@@ -1884,7 +1900,7 @@ function showDeepKpiDetail(type) {
       .filter(function(n) { return menuWks[n].length >= 2; })
       .sort(function(a, b) { return menuWks[b].length - menuWks[a].length; });
 
-    html += '<p style="font-size:12px;color:var(--muted);margin-bottom:14px">최근 4주 메인 메뉴 기준 · 주재료 카테고리별 등장 현황</p>';
+    html += '<p style="font-size:12px;color:var(--muted);margin-bottom:14px">최근 2주 메인 메뉴 기준 · 주재료 카테고리별 등장 현황</p>';
     html += '<div style="overflow-x:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;font-size:12px">';
     html += '<thead><tr style="background:var(--bg-2)">';
     html += '<th style="padding:6px 10px;text-align:left;font-weight:600;border-bottom:1px solid var(--border)">주재료</th>';
@@ -1900,37 +1916,37 @@ function showDeepKpiDetail(type) {
       var cat    = ingrList[ci];
       var wkArr  = ingrWks[cat.label] || [];
       var cnt    = wkArr.length;
-      var status = cnt >= 3
+      var status = cnt >= 2
         ? '<span style="color:var(--bad);font-weight:700">편중</span>'
-        : cnt >= 2
+        : cnt >= 1
           ? '<span style="color:#f59e0b;font-weight:700">주의</span>'
           : '<span style="color:var(--good)">다양</span>';
       html += '<tr style="border-bottom:1px solid var(--border)">';
       html += '<td style="padding:7px 10px;font-weight:500">' + cat.label + '</td>';
-      for (var wi2 = 0; wi2 < recent4.length; wi2++) {
+      for (var wi2 = 0; wi2 < recentIngr.length; wi2++) {
         var has = wkArr.indexOf(wi2) !== -1;
         html += '<td style="padding:7px 8px;text-align:center">'
           + (has ? '<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--primary);color:#fff;font-size:9px;line-height:16px;font-weight:700">●</span>' : '—')
           + '</td>';
       }
-      html += '<td style="padding:7px 8px;text-align:center;font-weight:700">' + cnt + '/' + recent4.length + '</td>';
+      html += '<td style="padding:7px 8px;text-align:center;font-weight:700">' + cnt + '/' + recentIngr.length + '</td>';
       html += '<td style="padding:7px 8px;text-align:center">' + status + '</td>';
       html += '</tr>';
     }
     html += '</tbody></table></div>';
 
     if (repeats.length) {
-      html += '<h4 style="font-size:13px;font-weight:600;margin-bottom:8px">반복 등장 메뉴 (2주↑)</h4>';
+      html += '<h4 style="font-size:13px;font-weight:600;margin-bottom:8px">반복 등장 메뉴 (2주 연속)</h4>';
       html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
       for (var ri = 0; ri < repeats.length; ri++) {
         var rn = repeats[ri], rc = menuWks[rn].length;
         html += '<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;'
-          + (rc >= 3 ? 'background:var(--primary);color:#fff' : 'background:#fff0ea;color:var(--primary)') + '">'
+          + 'background:var(--primary);color:#fff' + '">'
           + escHtml(rn) + ' &times;' + rc + '</span>';
       }
       html += '</div>';
     } else {
-      html += '<div style="color:var(--good);font-size:13px;font-weight:600">최근 ' + recent4.length + '주 반복 등장 메뉴 없음 — 다양한 주재료 제공 중</div>';
+      html += '<div style="color:var(--good);font-size:13px;font-weight:600">최근 2주 반복 등장 메뉴 없음 — 다양한 주재료 제공 중</div>';
     }
 
   } else if (type === 'cook') {
@@ -2118,17 +2134,18 @@ function renderFreqCharts(freq) {
 
 /* ── 중복 탭 ── */
 function buildDupTab(dups) {
-  const months = Object.keys(dups).sort().reverse();
-  if (!months.length) return '<div class="empty-state"><div class="icon">✅</div><p>중복 메뉴가 없습니다.</p></div>';
+  const periods = Object.keys(dups).sort().reverse();
+  if (!periods.length) return '<div class="empty-state"><div class="icon">✅</div><p>중복 메뉴가 없습니다.</p></div>';
 
-  let html = '<div class="note-blue" style="margin-bottom:14px">밥·김치류 등 기본 제공 반찬은 제외하고 <strong>메인 메뉴 기준</strong>으로 집계합니다.</div>';
-  for (const month of months) {
-    const [y,m] = month.split('-');
-    const label = `${y}년 ${+m}월`;
+  let html = '<div class="note-blue" style="margin-bottom:14px">밥·김치류 등 기본 제공 반찬은 제외하고 <strong>메인 메뉴 기준</strong>으로 집계합니다. <strong>2주 단위</strong> 기준으로 중복 제공된 메뉴를 표시합니다.</div>';
+  for (const period of periods) {
+    const parts = period.split('~');
+    const k1 = parts[0] || period, k2 = parts[1] || k1;
+    const label = k1 === k2 ? _periodLabel(k1) : _periodLabel(k1) + ' ~ ' + _periodLabel(k2);
     let hasAny = false;
     let rows = '';
     for (const mt of ['breakfast','lunchA','lunchB','dinner']) {
-      const entries = Object.entries(dups[month][mt]).filter(([,c])=>c>=2).sort((a,b)=>b[1]-a[1]);
+      const entries = Object.entries(dups[period][mt]).filter(([,c])=>c>=2).sort((a,b)=>b[1]-a[1]);
       for (const [nm,cnt] of entries) {
         hasAny = true;
         const badge = cnt >= 3 ? `<span class="badge badge-red">${cnt}회</span>` : `<span class="badge badge-warn">${cnt}회</span>`;
@@ -2138,7 +2155,7 @@ function buildDupTab(dups) {
     if (!hasAny) continue;
     html += `<div class="card" style="margin-bottom:14px">
       <h3>${label} 중복 메뉴</h3>
-      <div class="desc">같은 달에 2회 이상 제공된 메뉴</div>
+      <div class="desc">2주 내 2회 이상 제공된 메뉴</div>
       <table>
         <thead><tr><th>구분</th><th>메뉴</th><th>제공 횟수</th></tr></thead>
         <tbody>${rows}</tbody>
