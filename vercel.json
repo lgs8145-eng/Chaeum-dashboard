@@ -2,7 +2,8 @@
   "functions": {
     "api/parse-menu-image.js": { "maxDuration": 10 },
     "api/analyze-menu.js":     { "maxDuration": 30 },
-    "api/menus.js":            { "maxDuration": 10 }
+    "api/menus.js":            { "maxDuration": 10 },
+    "api/uploads.js":          { "maxDuration": 10 }
   },
   "rewrites": [
     { "source": "/", "destination": "/login.html" }
@@ -33,6 +34,12 @@
     },
     {
       "source": "/data.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/utils/uploads-store.js",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
       ]

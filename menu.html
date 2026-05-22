@@ -19,6 +19,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="data.js"></script>
+<script src="utils/uploads-store.js"></script>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;
   --primary:#FF5500;--primary-hover:#E04A00;--primary-light:#FFF2ED;--primary-mid:#FFD4C2;
@@ -404,7 +405,6 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
    상수 & 스토리지
 ══════════════════════════════════════════════════ */
 const MENU_KEY   = 'chaeum_menus_v1';
-const UPLOAD_KEY = 'chaeum_uploads_v1';
 const DAYS_KO = ['일','월','화','수','목','금','토'];
 const MEAL_LABELS = { breakfast:'조식', lunchA:'중식 A', lunchB:'중식 B', dinner:'석식' };
 const MEAL_COLORS = { breakfast:'#f59e0b', lunchA:'#3b82f6', lunchB:'#8b5cf6', dinner:'#10b981' };
@@ -486,9 +486,9 @@ async function deleteAllMenus() {
   } catch {}
 }
 
+// 월별 정산 데이터 — 기본값 + 업로드분(서버 동기화된 localStorage 캐시) 병합
 function loadAllMealRecords() {
-  let uploaded = {};
-  try { uploaded = JSON.parse(localStorage.getItem(UPLOAD_KEY) || '{}'); } catch {}
+  const uploaded = UploadsStore.loadCache();
   return { ...CHAEUM_DATA.records, ...uploaded };
 }
 
@@ -2730,7 +2730,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 서버(Redis)에서 최신 데이터 로드 후 렌더
-  await syncFromServer();
+  // 식단표 + 월별 정산 데이터(중복 검토용)를 함께 동기화
+  await Promise.all([syncFromServer(), UploadsStore.syncFromServer()]);
   renderWeekList();
   renderAnalysis();
 });
@@ -2745,7 +2746,7 @@ document.addEventListener('click', function(e) {
 // → PC-A에서 업로드한 내용을 PC-B가 탭 활성화 시점에 자동 반영
 document.addEventListener('visibilitychange', async () => {
   if (document.hidden) return;
-  await syncFromServer();
+  await Promise.all([syncFromServer(), UploadsStore.syncFromServer()]);
   renderWeekList();
   renderAnalysis();
 });

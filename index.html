@@ -517,6 +517,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 </div>
 
 <script src="data.js"></script>
+<script src="utils/uploads-store.js"></script>
 <script>
 /* ══════════════════════════════════════════════════
    데이터 레이어 — data.js 기본값 + localStorage 업로드 병합
@@ -524,11 +525,14 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 let DISPLAY_DATA = { months: [], records: {} };
 let currentMonth = null;
 
-const STORAGE_KEY = 'chaeum_uploads_v1';
+/* 월 데이터는 서버(Redis, /api/uploads)에 저장되고
+   localStorage('chaeum_uploads_v1')는 오프라인·속도용 캐시로 유지된다.
+   저장소 로직은 utils/uploads-store.js(window.UploadsStore)에 통합. */
 
 function buildDisplayData() {
-  let uploaded = {};
-  try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+  // localStorage 캐시 기준으로 화면 데이터 구성.
+  // 서버 최신본은 UploadsStore.syncFromServer() → buildDisplayData() 순으로 반영.
+  const uploaded = UploadsStore.loadCache();
 
   const allRecords = { ...CHAEUM_DATA.records, ...uploaded };
   const allMonths  = [...new Set([...CHAEUM_DATA.months, ...Object.keys(uploaded)])]
@@ -538,21 +542,17 @@ function buildDisplayData() {
 }
 
 function saveUpload(monthKey, record) {
-  let uploaded = {};
-  try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+  const uploaded = UploadsStore.loadCache();
   uploaded[monthKey] = record;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(uploaded));
-  } catch(e) {
-    throw new Error('브라우저 저장소 접근이 차단되었습니다. Edge/Safari의 추적 방지 설정을 확인하거나 파일을 서버를 통해 열어주세요.');
-  }
+  UploadsStore.saveCache(uploaded);          // 캐시 저장 (실패 시 예외)
+  UploadsStore.pushMonth(monthKey, record);  // 서버(Redis) 동기화 — 백그라운드
 }
 
 function deleteUpload(monthKey) {
-  let uploaded = {};
-  try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+  const uploaded = UploadsStore.loadCache();
   delete uploaded[monthKey];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(uploaded));
+  UploadsStore.saveCache(uploaded);
+  UploadsStore.deleteMonth(monthKey);        // 서버(Redis) 동기화 — 백그라운드
 }
 
 function isBaseData(monthKey) {
@@ -614,6 +614,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (uploadBtn) uploadBtn.style.display = 'none';
   }
 
+  // ── 서버(Redis)에서 월 데이터 동기화 ──
+  // admin 접속 시 로컬에만 있던 기존 데이터를 서버로 자동 마이그레이션.
+  await UploadsStore.syncFromServer({ pushLocalOnly: session.role === 'admin' });
+
   // ── 대시보드 초기화 ──
   buildDisplayData();
   currentMonth = DISPLAY_DATA.months[DISPLAY_DATA.months.length - 1];
@@ -621,6 +625,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderCumulative();
   renderMonthly(currentMonth);
   setupDropZone();
+});
+
+/* 다른 기기·탭에서 업로드한 내용을 탭 재활성화 시점에 자동 반영 */
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) return;
+  await UploadsStore.syncFromServer();
+  buildDisplayData();
+  if (!DISPLAY_DATA.months.includes(currentMonth))
+    currentMonth = DISPLAY_DATA.months[DISPLAY_DATA.months.length - 1];
+  renderTabs();
+  renderCumulative();
+  renderMonthly(currentMonth);
+  renderMonthList();
 });
 
 /* ══════════════════════════════════════════════════
@@ -1097,10 +1114,10 @@ function closeUploadModal() {
 }
 
 function renderMonthList() {
-  let uploaded = {};
-  try { uploaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+  const uploaded = UploadsStore.loadCache();
 
   const container = document.getElementById('monthListContainer');
+  if (!container) return;
   container.innerHTML = DISPLAY_DATA.months.map(key => {
     const r = rec(key);
     const isBase = isBaseData(key) && !uploaded[key];
