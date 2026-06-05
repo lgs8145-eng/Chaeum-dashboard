@@ -871,6 +871,16 @@ function renderCostStack(r, pr) {
 
 function renderSuppliers(r) {
   document.getElementById('supplierDesc').textContent = `${r.label} 식자재비 ${fmt천(r.cost.food)}천원 — 거래처별 매입 분포`;
+
+  // 거래처 데이터가 없으면 빈 차트 대신 안내 표시 (엑셀 '식재료비' 시트 누락·시트명 변경 시)
+  if (!Array.isArray(r.suppliers) || r.suppliers.length === 0) {
+    if (charts['supplierChart']) { charts['supplierChart'].destroy(); delete charts['supplierChart']; }
+    document.getElementById('supplierTableBody').innerHTML =
+      `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:18px">거래처별 데이터가 없습니다 — 엑셀 ‘식재료비’ 시트를 확인하세요</td></tr>`;
+    document.getElementById('supplierTableFoot').innerHTML = `<tr><td>합계</td><td>${fmt(r.cost.food)}</td><td>100.0%</td></tr>`;
+    return;
+  }
+
   setChart('supplierChart', {
     type:'doughnut',
     data:{labels:r.suppliers.map(s=>`${s.name} ${(s.ratio*100).toFixed(1)}%`),
@@ -1043,7 +1053,7 @@ function openKpiModal(key, r) {
       formula:`${fmt(r.cost.food)}원 ÷ ${fmt(r.headcount)}명`, result:`= ${fmt(ppFood)}원/인`,
       body:`<div class="modal-section"><h4>식자재비 구성</h4><table>
         <thead><tr><th>거래처</th><th>금액</th><th>비중</th></tr></thead>
-        <tbody>${r.suppliers.map(s=>`<tr ${s.amount<0?'style="color:#dc2626"':''}><td>${s.name}</td><td>${s.amount<0?'('+fmt(Math.abs(s.amount))+')':fmt(s.amount)}</td><td>${(s.ratio*100).toFixed(1)}%</td></tr>`).join('')}</tbody>
+        <tbody>${(Array.isArray(r.suppliers) && r.suppliers.length) ? r.suppliers.map(s=>`<tr ${s.amount<0?'style="color:#dc2626"':''}><td>${s.name}</td><td>${s.amount<0?'('+fmt(Math.abs(s.amount))+')':fmt(s.amount)}</td><td>${(s.ratio*100).toFixed(1)}%</td></tr>`).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:12px">거래처별 데이터 없음</td></tr>`}</tbody>
         <tfoot><tr><td>합계</td><td>${fmt(r.cost.food)}</td><td>100%</td></tr></tfoot>
       </table></div>
       <div class="modal-section"><h4>정산 인원</h4>
