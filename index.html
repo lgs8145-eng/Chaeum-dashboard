@@ -184,7 +184,10 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 
   /* UI 크롬 숨김 */
   .header-actions, .pdf-toast,
-  #pdfOverlay, #uploadModal, #kpiModal, #pwModal { display: none !important; }
+  #pdfOverlay, #uploadModal, #kpiModal, #pwModal, #ramenToggle { display: none !important; }
+
+  /* 라면 일별 목록은 인쇄(보고서) 시 전체 노출 */
+  #ramenTableBody .ramen-more { display: table-row !important; }
 
   body { background: #f5f7fb !important; margin: 0; }
   .shell { max-width: 100% !important; padding: 0 !important; }
@@ -322,6 +325,17 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
     </table>
   </div>
 </div>
+<div class="row cols-1">
+  <div class="card">
+    <h3>월별 핵심 단가지표</h3>
+    <div class="desc" id="ytdUnitDesc"></div>
+    <table>
+      <thead><tr><th>월</th><th>1식당 식자재비</th><th>1식당 총단가</th><th>1인당 식자재비</th></tr></thead>
+      <tbody id="ytdUnitBody"></tbody>
+      <tfoot id="ytdUnitFoot"></tfoot>
+    </table>
+  </div>
+</div>
 
 <!-- ══ 월별 상세 ══ -->
 <div class="section-label" id="monthDetailLabel">📋 상세</div>
@@ -357,6 +371,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
       <tbody id="ramenTableBody"></tbody>
       <tfoot id="ramenTableFoot"></tfoot>
     </table>
+    <div id="ramenToggle" style="margin-top:8px;text-align:center"></div>
     <div class="note" style="margin-top:14px">⚠ 위 금액은 특수 라면·토핑·라면기계 부속에 한정. 일반 박스 라면은 메인 거래처에 포함.</div>
   </div>
 </div>
@@ -755,6 +770,23 @@ function renderYTD() {
     </tr>`).join('');
   document.getElementById('ytdBreakFoot').innerHTML =
     `<tr><td>합계 (공급가)</td><td>${fmt(ytdSupply)}</td><td>100%</td><td>${fmt천(Math.round(ytdSupply/n))}천</td></tr>`;
+
+  // 월별 핵심 단가지표 (월별 값 + 누계평균 비교) — 누계평균은 누계합÷누계합(가중평균)
+  const ytdHead = ytdKeys.reduce((s, k) => s + rec(k).headcount, 0);
+  document.getElementById('ytdUnitDesc').textContent =
+    `${latestYear}년 ${n}개월 · 월별 단가와 누계평균(가중) 비교 — 원/식·원/인`;
+  document.getElementById('ytdUnitBody').innerHTML = ytdKeys.map(k => {
+    const m  = rec(k);
+    const f1 = m.meals.actual > 0 ? Math.round(m.cost.food  / m.meals.actual) : 0;
+    const t1 = m.meals.actual > 0 ? Math.round(m.cost.total / m.meals.actual) : 0;
+    const p1 = m.headcount    > 0 ? Math.round(m.cost.food  / m.headcount)    : 0;
+    return `<tr><td>${m.label.replace(latestYear + '년 ', '')}</td><td>${fmt(f1)}원</td><td>${fmt(t1)}원</td><td>${fmt(p1)}원</td></tr>`;
+  }).join('');
+  const avgF1 = ytdMeals > 0 ? Math.round(ytdFood   / ytdMeals) : 0;
+  const avgT1 = ytdMeals > 0 ? Math.round(ytdSupply / ytdMeals) : 0;
+  const avgP1 = ytdHead  > 0 ? Math.round(ytdFood   / ytdHead)  : 0;
+  document.getElementById('ytdUnitFoot').innerHTML =
+    `<tr><td>누계평균</td><td>${fmt(avgF1)}원</td><td>${fmt(avgT1)}원</td><td>${fmt(avgP1)}원</td></tr>`;
 }
 
 /* ══════════════════════════════════════════════════
@@ -912,9 +944,24 @@ function renderRamen(r) {
       <div style="font-size:24px;font-weight:700;color:#E04A00;margin-top:4px">${fmt(pm)}<span style="font-size:12px;font-weight:500">원/식</span></div>
       <div style="font-size:11px;color:#E04A00;margin-top:2px">라면 식수 ${fmt(rm.mealCount)}식 기준</div>
     </div>`;
-  document.getElementById('ramenTableBody').innerHTML = rm.items.map(it=>
-    `<tr><td>${it.date}</td><td style="text-align:left">${it.item}</td><td>${fmt(it.amount)}</td></tr>`).join('');
-  document.getElementById('ramenTableFoot').innerHTML = `<tr><td colspan="2">소계</td><td>${fmt(rm.totalCost)}</td></tr>`;
+  // 일별 목록은 금액 상위 N건만 기본 노출, 나머지는 접기/펼치기 (페이지 정돈)
+  const RAMEN_TOP_N = 8;
+  const items = [...rm.items].sort((a,b)=>b.amount-a.amount);
+  document.getElementById('ramenTableBody').innerHTML = items.map((it,i)=>
+    `<tr class="${i>=RAMEN_TOP_N?'ramen-more':''}"${i>=RAMEN_TOP_N?' style="display:none"':''}><td>${it.date}</td><td style="text-align:left">${it.item}</td><td>${fmt(it.amount)}</td></tr>`).join('');
+  document.getElementById('ramenTableFoot').innerHTML = `<tr><td colspan="2">소계 (${fmt(items.length)}건)</td><td>${fmt(rm.totalCost)}</td></tr>`;
+  const toggle = document.getElementById('ramenToggle');
+  toggle.innerHTML = items.length > RAMEN_TOP_N
+    ? `<button type="button" class="btn btn-outline" onclick="toggleRamen(this)" data-expanded="0" style="font-size:12px;padding:4px 12px">전체 ${items.length}건 보기 ▾</button>`
+    : '';
+}
+
+function toggleRamen(btn) {
+  const expand = btn.dataset.expanded !== '1';
+  document.querySelectorAll('#ramenTableBody .ramen-more').forEach(tr => { tr.style.display = expand ? '' : 'none'; });
+  btn.dataset.expanded = expand ? '1' : '0';
+  const total = document.querySelectorAll('#ramenTableBody tr').length;
+  btn.textContent = expand ? '접기 ▴' : `전체 ${total}건 보기 ▾`;
 }
 
 function renderPerMealCategory(r) {
