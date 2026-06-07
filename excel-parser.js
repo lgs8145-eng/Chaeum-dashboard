@@ -71,24 +71,47 @@ function _ymdToKorean(ymd) {
   return `${ymd.month}/${ymd.day}(${days[new Date(ymd.year, ymd.month - 1, ymd.day).getDay()]})`;
 }
 
-// 3행 헤더를 읽어 { 헤더명: 열문자 } 맵 반환 — 월별 열 구조 차이 자동 대응
-function _findCols(sheet) {
+// 헤더 행을 읽어 { 헤더명: 열문자 } 맵 반환 — 월별 열 구조 차이 자동 대응
+function _findCols(sheet, hdrRow) {
   const map = {};
+  const r = hdrRow || 3;
   for (let ci = 0; ci < 26; ci++) {
     const col = String.fromCharCode(65 + ci);
-    const c = sheet[col + '3'];
+    const c = sheet[col + r];
     if (c && c.v != null) map[String(c.v).trim()] = col;
   }
   return map;
 }
 
-// B열에서 "계" 텍스트가 있는 집계 행 번호 탐색
-function _findSumRow(sheet) {
-  for (let r = 20; r <= 40; r++) {
-    const c = sheet['B' + r];
+// 지정 열(일자 열)에서 "계" 텍스트가 있는 집계 행 번호 탐색
+function _findSumRow(sheet, dateCol) {
+  const col = dateCol || 'B';
+  for (let r = 5; r <= 60; r++) {
+    const c = sheet[col + r];
     if (c && String(c.v).trim() === '계') return r;
   }
   return 26;
+}
+
+// 시트명에 keyword 들을 모두 포함하는 첫 시트 반환 (우선순위 매칭)
+function _sheetPref(wb, ...keywords) {
+  const name = wb.SheetNames.find(n => keywords.every(k => n.includes(k)));
+  return name ? wb.Sheets[name] : null;
+}
+
+// 식수 시트의 헤더 행·일자 열을 "일자" 라벨로 동적 탐지
+// (1월: 2행/A열, 2·3·5월: 3행/B열 등 월별 차이 대응)
+function _findHeaderRowCol(sheet) {
+  for (let r = 1; r <= 6; r++) {
+    for (let ci = 0; ci < 26; ci++) {
+      const col = String.fromCharCode(65 + ci);
+      const c = sheet[col + r];
+      if (c && typeof c.v === 'string' && c.v.trim().includes('일자')) {
+        return { row: r, col };
+      }
+    }
+  }
+  return { row: 3, col: 'B' }; // 기존(4월) 기본값
 }
 
 /* ── 메인 파서 ─────────────────────────────────────────── */
@@ -101,15 +124,18 @@ function _findSumRow(sheet) {
 function parseChaeumExcel(arrayBuffer) {
   const wb = XLSX.read(arrayBuffer, { type: 'array' });
 
-  /* 시트 참조 */
-  const sh정산   = _sheet(wb, '법인별정산');
+  /* 시트 참조 — 월별 시트 명명 차이 대응 (우선순위·키워드 매칭) */
+  // '법인별정산'은 _법인별·_헥토 둘 다 있을 수 있어 '헥토' 우선
+  const sh정산   = _sheetPref(wb, '법인별정산', '헥토') || _sheet(wb, '법인별정산');
   const sh인원   = _sheet(wb, '법인별 인원');
-  const sh식재료 = _sheet(wb, '식재료비');
-  const sh식수   = _sheet(wb, '별첨3');
-  const sh라면   = _sheet(wb, '별첨)라면');
+  // '식재료비'는 별첨X_식재료비_* 와 충돌하므로 단독 시트 우선
+  const sh식재료 = wb.SheetNames.includes('식재료비') ? wb.Sheets['식재료비'] : _sheet(wb, '식재료비');
+  // 식수 시트는 '별첨3'이 '별첨3_식재료비_미청구'와 충돌(1월)하므로 '식사인원'으로 탐색
+  const sh식수   = _sheet(wb, '식사인원');
+  const sh라면   = _sheet(wb, '라면코너') || _sheet(wb, '라면');
 
   if (!sh정산) throw new Error("'법인별정산_헥토' 시트를 찾을 수 없습니다. 파일 형식을 확인하세요.");
-  if (!sh식수)  throw new Error("'별첨3)식사인원' 시트를 찾을 수 없습니다. 파일 형식을 확인하세요.");
+  if (!sh식수)  throw new Error("'식사인원' 시트를 찾을 수 없습니다. 파일 형식을 확인하세요.");
 
   /* ── 1. 원가 구성 ──────────────────────────────────── */
   const food         = Math.round(_cn(sh정산, 'F23') || 0);
@@ -147,10 +173,12 @@ function parseChaeumExcel(arrayBuffer) {
     }
   }
 
-  /* ── 5. 일별 식수 (별첨3)식사인원) ────────────────── */
-  // 헤더(3행)로 열 위치 자동 탐지 — 월별 열 구조 차이 자동 대응
-  const cols   = _findCols(sh식수);
-  const sumRow = _findSumRow(sh식수);
+  /* ── 5. 일별 식수 (식사인원 시트) ────────────────── */
+  // 헤더 행·일자 열을 동적 탐지 후 그 행으로 열 위치 매핑 — 월별 구조 차이 자동 대응
+  const hdr     = _findHeaderRowCol(sh식수);
+  const dateCol = hdr.col;
+  const cols    = _findCols(sh식수, hdr.row);
+  const sumRow  = _findSumRow(sh식수, dateCol);
 
   const cMP  = cols['(M)준비']    || 'D';
   const cMA  = cols['(M)실제']    || 'E';
@@ -188,13 +216,13 @@ function parseChaeumExcel(arrayBuffer) {
   const totalPrepared = Math.round(_cn(sh식수, cTP + sumRow) || 0);
   const totalActual   = Math.round(_cn(sh식수, cTA + sumRow) || 0);
 
-  // 일별 데이터 (행 4부터 연속)
+  // 일별 데이터 (헤더 다음 행부터 연속)
   const daily = [];
   let businessDays = 0;
   let settlementYear = null, settlementMonth = null;
 
-  for (let row = 4; row <= 60; row++) {
-    const ymd       = _cellToYMD(sh식수, `B${row}`);
+  for (let row = hdr.row + 1; row <= hdr.row + 60; row++) {
+    const ymd       = _cellToYMD(sh식수, dateCol + row);
     const vPrepared = _cn(sh식수, cTP + row);
     if (!ymd || vPrepared == null) break;
 
@@ -240,12 +268,20 @@ function parseChaeumExcel(arrayBuffer) {
   /* ── 7. 공급처 현황 ────────────────────────────────── */
   const suppliers = [];
   if (sh식재료 && food > 0) {
-    // 합계 행 탐색: F 열 값이 식재료비 합계와 거의 일치하는 행
-    let sumRow = 29;
-    for (let r = 27; r <= 40; r++) {
-      const v = _cn(sh식재료, `F${r}`);
-      if (v && Math.abs(v - food) / food < 0.02) { sumRow = r; break; }
+    // 합계 행 탐색: B열에 "합계" 텍스트가 있는 행 (월별 23/27/29행 등 가변)
+    let sumRow = 0;
+    for (let r = 5; r <= 60; r++) {
+      const b = _cs(sh식재료, `B${r}`);
+      if (b && b.includes('합계')) { sumRow = r; break; }
     }
+    // 폴백: 총합계(P열)가 식재료비 총액(food)과 근접한 행
+    if (!sumRow) {
+      for (let r = 5; r <= 60; r++) {
+        const p = _cn(sh식재료, `P${r}`);
+        if (p && Math.abs(p - food) / food < 0.03) { sumRow = r; break; }
+      }
+    }
+    if (!sumRow) sumRow = 29;
 
     const supMap = [
       { name: '동원홈푸드',                       col: 'F' },
