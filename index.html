@@ -330,7 +330,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
     <h3>월별 핵심 단가지표</h3>
     <div class="desc" id="ytdUnitDesc"></div>
     <table>
-      <thead><tr><th>월</th><th>1식당 식자재비</th><th>1식당 총단가</th><th>1인당 식자재비</th></tr></thead>
+      <thead><tr><th>월</th><th>1식당 식자재비 (원/식)</th><th>1식당 총단가 (원/식)</th><th>1인 월 식자재비 (원/인·월)</th></tr></thead>
       <tbody id="ytdUnitBody"></tbody>
       <tfoot id="ytdUnitFoot"></tfoot>
     </table>
@@ -774,7 +774,7 @@ function renderYTD() {
   // 월별 핵심 단가지표 (월별 값 + 누계평균 비교) — 누계평균은 누계합÷누계합(가중평균)
   const ytdHead = ytdKeys.reduce((s, k) => s + rec(k).headcount, 0);
   document.getElementById('ytdUnitDesc').textContent =
-    `${latestYear}년 ${n}개월 · 월별 단가와 누계평균(가중) 비교 — 원/식·원/인`;
+    `${latestYear}년 ${n}개월 · 월별 단가와 누계평균(가중) 비교 · 1식당=원/식, 1인 월=원/인(월 기준)`;
   document.getElementById('ytdUnitBody').innerHTML = ytdKeys.map(k => {
     const m  = rec(k);
     const f1 = m.meals.actual > 0 ? Math.round(m.cost.food  / m.meals.actual) : 0;
