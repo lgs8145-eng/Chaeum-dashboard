@@ -799,18 +799,25 @@ function renderYTD() {
   const umLabels = ytdKeys.map(k => rec(k).label.replace(latestYear + '년 ', ''));
   const perMeal  = (k, key) => { const m = rec(k); return m.meals.actual > 0 ? Math.round(m.cost[key] / m.meals.actual) : 0; };
   document.getElementById('ytdUnitStackDesc').textContent =
-    `${latestYear}년 ${n}개월 · 1식당 공급가를 식자재·인건·경비·운영으로 분해 (원/식)`;
+    `${latestYear}년 ${n}개월 · 막대=1식당 단가(원/식, 좌) · 선=실식수(식, 우) — 식수↓ 시 1식당 단가↑`;
   setChart('ytdUnitStackChart', {
     type:'bar',
     data:{ labels: umLabels, datasets:[
-      { label:'식재료비',   data: ytdKeys.map(k=>perMeal(k,'food')),  backgroundColor:'#FF5500' },
-      { label:'인건비',     data: ytdKeys.map(k=>perMeal(k,'labor')), backgroundColor:'#7c3aed' },
-      { label:'경비',       data: ytdKeys.map(k=>perMeal(k,'opex')),  backgroundColor:'#d97706' },
-      { label:'운영관리비', data: ytdKeys.map(k=>perMeal(k,'mgmt')),  backgroundColor:'#16a34a' },
+      { label:'식재료비',   data: ytdKeys.map(k=>perMeal(k,'food')),  backgroundColor:'#FF5500', stack:'cost', order:2 },
+      { label:'인건비',     data: ytdKeys.map(k=>perMeal(k,'labor')), backgroundColor:'#7c3aed', stack:'cost', order:2 },
+      { label:'경비',       data: ytdKeys.map(k=>perMeal(k,'opex')),  backgroundColor:'#d97706', stack:'cost', order:2 },
+      { label:'운영관리비', data: ytdKeys.map(k=>perMeal(k,'mgmt')),  backgroundColor:'#16a34a', stack:'cost', order:2 },
+      { label:'실식수', type:'line', data: ytdKeys.map(k=>rec(k).meals.actual), yAxisID:'y1', order:0,
+        borderColor:'#0f172a', backgroundColor:'#0f172a', borderWidth:2, pointRadius:3, tension:0.3 },
     ]},
     options:{ ...BASE_OPTS,
-      scales:{ x:{ stacked:true }, y:{ stacked:true, ticks:{ callback:v=>fmt(v)+'원' } } },
-      plugins:{ ...BASE_OPTS.plugins, tooltip:{ callbacks:{ label:c=>c.dataset.label+': '+fmt(c.raw)+'원/식' } } } }
+      scales:{
+        x:{ stacked:true },
+        y:{ stacked:true, position:'left', ticks:{ callback:v=>fmt(v)+'원' } },
+        y1:{ position:'right', grid:{ drawOnChartArea:false }, ticks:{ callback:v=>fmt(v)+'식' } },
+      },
+      plugins:{ ...BASE_OPTS.plugins,
+        tooltip:{ callbacks:{ label:c=>c.dataset.label+': '+fmt(c.raw)+(c.dataset.yAxisID==='y1'?'식':'원/식') } } } }
   });
 }
 
