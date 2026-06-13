@@ -330,7 +330,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
     <h3>월별 핵심 단가지표</h3>
     <div class="desc" id="ytdUnitDesc"></div>
     <table>
-      <thead><tr><th>월</th><th>1식당 식자재비 (원/식)</th><th>1식당 총단가 (원/식)</th><th>1인 월 식자재비 (원/인·월)</th></tr></thead>
+      <thead><tr><th>월</th><th>1끼당 식자재비 (원/끼)</th><th>1끼당 총단가 (원/끼)</th><th>1인 월 식자재비 (원/인·월)</th><th>1인 1일 지원 식비 (원/인·일)</th></tr></thead>
       <tbody id="ytdUnitBody"></tbody>
       <tfoot id="ytdUnitFoot"></tfoot>
     </table>
@@ -338,7 +338,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 </div>
 <div class="row cols-1">
   <div class="card">
-    <h3>월별 1식당 단가 요소 분해</h3>
+    <h3>월별 1끼당 단가 요소 분해</h3>
     <div class="desc" id="ytdUnitStackDesc"></div>
     <div class="chart-wrap"><canvas id="ytdUnitStackChart"></canvas></div>
   </div>
@@ -385,11 +385,11 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 
 <div class="row cols-1">
   <div class="card">
-    <h3>📊 식자재 항목별 1식당 단가 (추정)</h3>
+    <h3>📊 식자재 항목별 1끼당 단가 (추정)</h3>
     <div class="desc">실제 식수와 직접 매입한 식자재비를 기반으로 산출</div>
     <div class="chart-wrap"><canvas id="perMealCategoryChart"></canvas></div>
     <table style="margin-top:14px">
-      <thead><tr><th>식사 종류</th><th>실제 식수</th><th>직접 식자재비</th><th>1식당 식자재비</th></tr></thead>
+      <thead><tr><th>식사 종류</th><th>실제 식수</th><th>직접 식자재비</th><th>1끼당 식자재비</th></tr></thead>
       <tbody id="perMealTableBody"></tbody>
       <tfoot id="perMealTableFoot"></tfoot>
     </table>
@@ -726,6 +726,9 @@ function renderYTD() {
   const ytdOpex    = ytdKeys.reduce((s, k) => s + rec(k).cost.opex,     0);
   const ytdMgmt    = ytdKeys.reduce((s, k) => s + rec(k).cost.mgmt,     0);
   const ytdPerMeal = ytdMeals > 0 ? Math.round(ytdSupply / ytdMeals) : 0;
+  // 1인 1일 회사 지원 식비 = 총공급가 ÷ (정산인원 × 영업일) — 영업일 기준 인·일당
+  const ytdPersonDays = ytdKeys.reduce((s, k) => s + rec(k).headcount * rec(k).businessDays, 0);
+  const ytdDaily      = ytdPersonDays > 0 ? Math.round(ytdSupply / ytdPersonDays) : 0;
 
   // KPI 카드
   document.getElementById('ytdKpiGrid').innerHTML = `
@@ -740,9 +743,14 @@ function renderYTD() {
       <div style="font-size:11px;color:var(--muted);margin-top:6px">월평균 ${fmt(Math.round(ytdMeals/n))}식</div>
     </div>
     <div class="kpi" style="border-top:3px solid #d97706">
-      <div class="lbl">누계 평균 1식당 단가</div>
+      <div class="lbl">누계 평균 1끼당 단가</div>
       <div class="val">${fmt(ytdPerMeal)}<span class="unit">원</span></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">누계 공급가 ÷ 누계 식수</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">누계 공급가 ÷ 누계 식수(끼)</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #0891b2">
+      <div class="lbl">누계 1인 1일 지원 식비</div>
+      <div class="val">${fmt(ytdDaily)}<span class="unit">원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">총공급가 ÷ 인원 ÷ 영업일</div>
     </div>`;
 
   // 연누계 원가 비중 (도넛)
@@ -781,25 +789,27 @@ function renderYTD() {
   // 월별 핵심 단가지표 (월별 값 + 누계평균 비교) — 누계평균은 누계합÷누계합(가중평균)
   const ytdHead = ytdKeys.reduce((s, k) => s + rec(k).headcount, 0);
   document.getElementById('ytdUnitDesc').textContent =
-    `${latestYear}년 ${n}개월 · 월별 단가와 누계평균(가중) 비교 · 1식당=원/식, 1인 월=원/인(월 기준)`;
+    `${latestYear}년 ${n}개월 · 1끼당=원/끼 · 1인 월=원/인(월) · 1인 1일 지원 식비=총공급가÷인원÷영업일`;
   document.getElementById('ytdUnitBody').innerHTML = ytdKeys.map(k => {
     const m  = rec(k);
     const f1 = m.meals.actual > 0 ? Math.round(m.cost.food  / m.meals.actual) : 0;
     const t1 = m.meals.actual > 0 ? Math.round(m.cost.total / m.meals.actual) : 0;
     const p1 = m.headcount    > 0 ? Math.round(m.cost.food  / m.headcount)    : 0;
-    return `<tr><td>${m.label.replace(latestYear + '년 ', '')}</td><td>${fmt(f1)}원</td><td>${fmt(t1)}원</td><td>${fmt(p1)}원</td></tr>`;
+    const d1 = (m.headcount > 0 && m.businessDays > 0) ? Math.round(m.cost.total / m.headcount / m.businessDays) : 0;
+    return `<tr><td>${m.label.replace(latestYear + '년 ', '')}</td><td>${fmt(f1)}원</td><td>${fmt(t1)}원</td><td>${fmt(p1)}원</td><td>${fmt(d1)}원</td></tr>`;
   }).join('');
-  const avgF1 = ytdMeals > 0 ? Math.round(ytdFood   / ytdMeals) : 0;
-  const avgT1 = ytdMeals > 0 ? Math.round(ytdSupply / ytdMeals) : 0;
-  const avgP1 = ytdHead  > 0 ? Math.round(ytdFood   / ytdHead)  : 0;
+  const avgF1 = ytdMeals      > 0 ? Math.round(ytdFood   / ytdMeals)      : 0;
+  const avgT1 = ytdMeals      > 0 ? Math.round(ytdSupply / ytdMeals)      : 0;
+  const avgP1 = ytdHead       > 0 ? Math.round(ytdFood   / ytdHead)       : 0;
+  const avgD1 = ytdPersonDays > 0 ? Math.round(ytdSupply / ytdPersonDays) : 0;
   document.getElementById('ytdUnitFoot').innerHTML =
-    `<tr><td>누계평균</td><td>${fmt(avgF1)}원</td><td>${fmt(avgT1)}원</td><td>${fmt(avgP1)}원</td></tr>`;
+    `<tr><td>누계평균</td><td>${fmt(avgF1)}원</td><td>${fmt(avgT1)}원</td><td>${fmt(avgP1)}원</td><td>${fmt(avgD1)}원</td></tr>`;
 
-  // 월별 1식당 단가 요소 분해 (누적 막대) — 식수 감소 시 인건비 희석 효과를 시각화
+  // 월별 1끼당 단가 요소 분해 (누적 막대) — 식수 감소 시 인건비 희석 효과를 시각화
   const umLabels = ytdKeys.map(k => rec(k).label.replace(latestYear + '년 ', ''));
   const perMeal  = (k, key) => { const m = rec(k); return m.meals.actual > 0 ? Math.round(m.cost[key] / m.meals.actual) : 0; };
   document.getElementById('ytdUnitStackDesc').textContent =
-    `${latestYear}년 ${n}개월 · 막대=1식당 단가(원/식, 좌) · 선=실식수(식, 우) — 식수↓ 시 1식당 단가↑`;
+    `${latestYear}년 ${n}개월 · 막대=1끼당 단가(원/끼, 좌) · 선=실식수(식, 우) — 식수↓ 시 1끼당 단가↑`;
   setChart('ytdUnitStackChart', {
     type:'bar',
     data:{ labels: umLabels, datasets:[
@@ -817,7 +827,7 @@ function renderYTD() {
         y1:{ position:'right', grid:{ drawOnChartArea:false }, ticks:{ callback:v=>fmt(v)+'식' } },
       },
       plugins:{ ...BASE_OPTS.plugins,
-        tooltip:{ callbacks:{ label:c=>c.dataset.label+': '+fmt(c.raw)+(c.dataset.yAxisID==='y1'?'식':'원/식') } } } }
+        tooltip:{ callbacks:{ label:c=>c.dataset.label+': '+fmt(c.raw)+(c.dataset.yAxisID==='y1'?'식':'원/끼') } } } }
   });
 }
 
@@ -861,7 +871,7 @@ function renderKPIs(r, pr) {
            : `<span class="delta flat">준비 대비 ${(r.meals.actual/r.meals.prepared*100).toFixed(1)}%</span>`}
     </div>
     <div class="kpi">
-      <div class="lbl">1식당 평균 단가</div>
+      <div class="lbl">1끼당 평균 단가</div>
       <div class="val">${fmt(perMeal)}<span class="unit">원</span></div>
       ${deltaHtml(perMeal, pr ? Math.round(pr.cost.total/pr.meals.actual) : null)}
     </div>
@@ -882,8 +892,8 @@ function renderKPIs(r, pr) {
           <div style="font-size:11px;color:var(--muted);margin-top:2px">영업일 ${r.businessDays}일 기준</div>
         </div>
         <div class="metric-card" data-modal="m3" style="border-left:1px solid #FFD4C2">
-          <div class="lbl">1식당 식자재비</div>
-          <div class="val" style="font-size:22px">${fmt(pmFood)}<span class="unit">원/식</span></div>
+          <div class="lbl">1끼당 식자재비</div>
+          <div class="val" style="font-size:22px">${fmt(pmFood)}<span class="unit">원/끼</span></div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">실제 식수 ${fmt(r.meals.actual)}식 기준</div>
         </div>
         <div class="metric-card" data-modal="m4" style="border-left:1px solid #FFD4C2">
@@ -972,8 +982,8 @@ function renderRamen(r) {
       <div style="font-size:11px;color:#9a3412;margin-top:2px">전체 식자재비의 ${ratio}%</div>
     </div>
     <div style="background:#FFF2ED;border:1px solid #FFD4C2;border-radius:10px;padding:14px">
-      <div style="font-size:11px;color:#E04A00;font-weight:600">라면 1식당 직접 식자재비</div>
-      <div style="font-size:24px;font-weight:700;color:#E04A00;margin-top:4px">${fmt(pm)}<span style="font-size:12px;font-weight:500">원/식</span></div>
+      <div style="font-size:11px;color:#E04A00;font-weight:600">라면 1끼당 직접 식자재비</div>
+      <div style="font-size:24px;font-weight:700;color:#E04A00;margin-top:4px">${fmt(pm)}<span style="font-size:12px;font-weight:500">원/끼</span></div>
       <div style="font-size:11px;color:#E04A00;margin-top:2px">라면 식수 ${fmt(rm.mealCount)}식 기준</div>
     </div>`;
   // 일별 목록은 금액 상위 N건만 기본 노출, 나머지는 접기/펼치기 (페이지 정돈)
@@ -1001,10 +1011,10 @@ function renderPerMealCategory(r) {
   setChart('perMealCategoryChart', {
     type:'bar',
     data:{labels:[...cats.map(c=>c.label),'전체 평균'],
-      datasets:[{label:'1식당 식자재비(원)',data:[...cats.map(c=>c.perMeal),Math.round(tc/tm)],
+      datasets:[{label:'1끼당 식자재비(원)',data:[...cats.map(c=>c.perMeal),Math.round(tc/tm)],
         backgroundColor:['#FF5500','#16a34a','#d97706','#94a3b8'],borderRadius:6}]},
     options:{...BASE_OPTS, indexAxis:'y', scales:{x:{ticks:{callback:v=>fmt(v)+'원'}}},
-      plugins:{...BASE_OPTS.plugins, legend:{display:false}, tooltip:{callbacks:{label:c=>'1식당: '+fmt(c.raw)+'원'}}}}
+      plugins:{...BASE_OPTS.plugins, legend:{display:false}, tooltip:{callbacks:{label:c=>'1끼당: '+fmt(c.raw)+'원'}}}}
   });
   document.getElementById('perMealTableBody').innerHTML = cats.map(c=>
     `<tr><td>${c.label}</td><td>${fmt(c.mealCount)}</td><td>${fmt(c.foodCost)}</td><td><strong>${fmt(c.perMeal)}</strong></td></tr>`).join('');
@@ -1148,10 +1158,10 @@ function openKpiModal(key, r) {
           1인 일 식자재비: <strong style="color:#E04A00">${fmt(ppDay)}원/인일</strong><br>
           1일 평균 총 식자재비: ${fmt(Math.round(r.cost.food/r.businessDays))}원/일
         </div></div>`},
-    m3:{title:'1식당 식자재비 산출',sub:'식자재비 ÷ 실제 식수',
-      formula:`${fmt(r.cost.food)}원 ÷ ${fmt(r.meals.actual)}식`, result:`= ${fmt(pmFood)}원/식`,
+    m3:{title:'1끼당 식자재비 산출',sub:'식자재비 ÷ 실제 식수',
+      formula:`${fmt(r.cost.food)}원 ÷ ${fmt(r.meals.actual)}식`, result:`= ${fmt(pmFood)}원/끼`,
       body:`<div class="modal-section"><h4>식사 종류별</h4><table>
-        <thead><tr><th>구분</th><th>식수</th><th>식자재비</th><th>1식당</th></tr></thead>
+        <thead><tr><th>구분</th><th>식수</th><th>식자재비</th><th>1끼당</th></tr></thead>
         <tbody>${r.perMealCategory.map(c=>`<tr><td>${c.label}</td><td>${fmt(c.mealCount)}</td><td>${fmt(c.foodCost)}</td><td><strong>${fmt(c.perMeal)}원</strong></td></tr>`).join('')}</tbody>
         <tfoot><tr><td>합계</td><td>${fmt(r.meals.actual)}</td><td>${fmt(r.cost.food)}</td><td><strong>${fmt(pmFood)}원</strong></td></tr></tfoot>
       </table></div>`},
