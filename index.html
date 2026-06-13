@@ -184,7 +184,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 
   /* UI 크롬 숨김 */
   .header-actions, .pdf-toast,
-  #pdfOverlay, #uploadModal, #kpiModal, #pwModal, #ramenToggle { display: none !important; }
+  #pdfOverlay, #uploadModal, #kpiModal, #pwModal, #ramenToggle, #extraSaveBar { display: none !important; }
 
   /* 라면 일별 목록은 인쇄(보고서) 시 전체 노출 */
   #ramenTableBody .ramen-more { display: table-row !important; }
@@ -342,6 +342,21 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
     <h3>월별 1끼당 단가 요소 분해</h3>
     <div class="desc" id="ytdUnitStackDesc"></div>
     <div class="chart-wrap"><canvas id="ytdUnitStackChart"></canvas></div>
+  </div>
+</div>
+<div class="section-label">🏢 식당 임차료·관리비 (실부담 분석) <span style="font-size:12px;font-weight:400;color:var(--muted)">— 정산 공급가에 없는 회사 추가 부담분 반영</span></div>
+<div class="kpi-grid" id="extraKpiGrid"></div>
+<div class="row cols-1">
+  <div class="card">
+    <h3>월별 임차료·관리비 입력 및 실부담</h3>
+    <div class="desc" id="extraDesc"></div>
+    <table>
+      <thead><tr><th>월</th><th>임차료 (원)</th><th>관리비 (원)</th><th>총 실부담 (원)</th><th>1끼당 실부담 (원/끼)</th><th>1인 1일 실부담 (원/인·일)</th></tr></thead>
+      <tbody id="extraTableBody"></tbody>
+      <tfoot id="extraTableFoot"></tfoot>
+    </table>
+    <div id="extraSaveBar" style="margin-top:12px"></div>
+    <div class="note" style="margin-top:12px">실부담 = 정산 공급가 + 임차료 + 관리비. 임차료·관리비는 정산서에 포함되지 않은 회사 추가 부담분입니다. <span style="color:var(--muted)">(비워두면 0 처리 · 관리자만 입력)</span></div>
   </div>
 </div>
 
@@ -547,6 +562,7 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
 ══════════════════════════════════════════════════ */
 let DISPLAY_DATA = { months: [], records: {} };
 let currentMonth = null;
+let IS_ADMIN = false;
 
 /* 월 데이터는 서버(Redis, /api/uploads)에 저장되고
    localStorage('chaeum_uploads_v1')는 오프라인·속도용 캐시로 유지된다.
@@ -624,6 +640,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── 세션 확인 및 역할 기반 UI ──
   const session = await authGetSession();
   if (!session) return; // 이미 head에서 리다이렉트됨
+  IS_ADMIN = session.role === 'admin';
 
   const roleEl = document.getElementById('userRole');
   if (session.role === 'admin') {
@@ -704,6 +721,7 @@ function renderCumulative() {
   });
 
   renderYTD();
+  renderExtra();
 }
 
 /* ══════════════════════════════════════════════════
@@ -832,6 +850,87 @@ function renderYTD() {
       plugins:{ ...BASE_OPTS.plugins,
         tooltip:{ callbacks:{ label:c=>c.dataset.label+': '+fmt(c.raw)+(c.dataset.yAxisID==='y1'?'식':'원/끼') } } } }
   });
+}
+
+/* ══════════════════════════════════════════════════
+   식당 임차료·관리비 (실부담 분석)
+   실부담 = 정산 공급가 + 임차료 + 관리비 (별도 지표, 기존 공급가 지표는 유지)
+══════════════════════════════════════════════════ */
+function renderExtra() {
+  const allKeys = DISPLAY_DATA.months;
+  if (allKeys.length === 0) return;
+  const latestYear = allKeys[allKeys.length - 1].split('-')[0];
+  const ytdKeys    = allKeys.filter(k => k.startsWith(latestYear));
+  if (ytdKeys.length === 0) return;
+
+  let sRent = 0, sMaint = 0, sSupply = 0, sMeals = 0, sPD = 0;
+  document.getElementById('extraTableBody').innerHTML = ytdKeys.map(k => {
+    const m     = rec(k);
+    const ex    = m.extraCost || { rent: 0, maint: 0 };
+    const rent  = ex.rent  || 0;
+    const maint = ex.maint || 0;
+    const real  = m.cost.total + rent + maint;
+    const perMeal = m.meals.actual > 0 ? Math.round(real / m.meals.actual) : 0;
+    const perPD   = (m.headcount > 0 && m.businessDays > 0) ? Math.round(real / (m.headcount * m.businessDays)) : 0;
+    sRent += rent; sMaint += maint; sSupply += m.cost.total; sMeals += m.meals.actual; sPD += m.headcount * m.businessDays;
+    const mn = m.label.replace(latestYear + '년 ', '');
+    const inputCell = (v, fld) => IS_ADMIN
+      ? `<input type="number" min="0" step="10000" data-mk="${k}" data-fld="${fld}" value="${v || ''}" placeholder="0" style="width:120px;text-align:right;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px">`
+      : fmt(v);
+    return `<tr><td>${mn}</td><td>${inputCell(rent,'rent')}</td><td>${inputCell(maint,'maint')}</td><td>${fmt(real)}</td><td>${fmt(perMeal)}원</td><td>${fmt(perPD)}원</td></tr>`;
+  }).join('');
+
+  const realSum     = sSupply + sRent + sMaint;
+  const avgPerMeal  = sMeals > 0 ? Math.round(realSum / sMeals) : 0;
+  const avgPerPD    = sPD    > 0 ? Math.round(realSum / sPD)    : 0;
+  const basePerPD   = sPD    > 0 ? Math.round(sSupply / sPD)    : 0;
+  document.getElementById('extraTableFoot').innerHTML =
+    `<tr><td>누계</td><td>${fmt(sRent)}</td><td>${fmt(sMaint)}</td><td>${fmt(realSum)}</td><td>${fmt(avgPerMeal)}원</td><td>${fmt(avgPerPD)}원</td></tr>`;
+
+  document.getElementById('extraDesc').textContent =
+    `${latestYear}년 ${ytdKeys.length}개월 · 실부담 = 공급가 + 임차료 + 관리비`;
+
+  document.getElementById('extraKpiGrid').innerHTML = `
+    <div class="kpi" style="border-top:3px solid #db2777">
+      <div class="lbl">누계 임차료·관리비</div>
+      <div class="val">${fmt천(sRent + sMaint)}<span class="unit">천원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">임차료 ${fmt천(sRent)} · 관리비 ${fmt천(sMaint)}천원</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #0d9488">
+      <div class="lbl">누계 1끼당 실부담 단가</div>
+      <div class="val">${fmt(avgPerMeal)}<span class="unit">원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">실부담 ÷ 누계 식수(끼)</div>
+    </div>
+    <div class="kpi" style="border-top:3px solid #9333ea">
+      <div class="lbl">누계 1인 1일 실부담 식비</div>
+      <div class="val">${fmt(avgPerPD)}<span class="unit">원</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">공급가 기준 ${fmt(basePerPD)}원 + 임차·관리 ${fmt(avgPerPD - basePerPD)}원</div>
+    </div>`;
+
+  document.getElementById('extraSaveBar').innerHTML = IS_ADMIN
+    ? `<button type="button" class="btn btn-primary" onclick="saveExtra()">임차료·관리비 저장</button> <span id="extraSaveMsg" style="font-size:12px;color:var(--muted);margin-left:8px"></span>`
+    : '';
+}
+
+function saveExtra() {
+  const byMonth = {};
+  document.querySelectorAll('#extraTableBody input[data-mk]').forEach(inp => {
+    const k = inp.dataset.mk;
+    (byMonth[k] = byMonth[k] || {})[inp.dataset.fld] = Math.max(0, Math.round(Number(inp.value) || 0));
+  });
+  const msg = document.getElementById('extraSaveMsg');
+  try {
+    Object.keys(byMonth).forEach(k => {
+      const m = rec(k);
+      if (!m) return;
+      m.extraCost = { rent: byMonth[k].rent || 0, maint: byMonth[k].maint || 0 };
+      saveUpload(k, m);
+    });
+    renderExtra();
+    if (msg) msg.textContent = '✅ 저장됨 (서버 동기화)';
+  } catch (e) {
+    if (msg) msg.textContent = '❌ 저장 실패: ' + e.message;
+  }
 }
 
 /* ══════════════════════════════════════════════════
@@ -1285,6 +1384,9 @@ async function processExcelFile(file) {
     const buffer = await file.arrayBuffer();
     const { monthKey, record } = parseChaeumExcel(buffer);
 
+    // 기존에 입력한 임차료·관리비는 재업로드 시에도 보존 (파서가 생성하지 않는 값)
+    const prevX = rec(monthKey);
+    if (prevX && prevX.extraCost) record.extraCost = prevX.extraCost;
     saveUpload(monthKey, record);
     buildDisplayData();
     currentMonth = monthKey;
@@ -1306,6 +1408,9 @@ function processJsonFile(file) {
       const { monthKey, record, error } = validateData(parsed);
       if (error) { showResult('error', `❌ ${error}`); return; }
 
+      // 기존에 입력한 임차료·관리비는 재업로드 시에도 보존
+      const prevX = rec(monthKey);
+      if (prevX && prevX.extraCost && !record.extraCost) record.extraCost = prevX.extraCost;
       saveUpload(monthKey, record);
       buildDisplayData();
       currentMonth = monthKey;
