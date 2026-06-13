@@ -330,10 +330,11 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
     <h3>월별 핵심 단가지표</h3>
     <div class="desc" id="ytdUnitDesc"></div>
     <table>
-      <thead><tr><th>월</th><th>1끼당 식자재비 (원/끼)</th><th>1끼당 총단가 (원/끼)</th><th>1인 월 식자재비 (원/인·월)</th><th>1인 1일 지원 식비 (원/인·일)</th></tr></thead>
+      <thead><tr><th>월</th><th>1끼당 식자재비 (원/끼)</th><th>1끼당 총단가 (원/끼)</th><th>1인 월 식자재비 (원/인·월)</th><th>1인 1일 지원 식비 (원/인·일)</th><th>1인 1일 평균 끼니수 (끼)</th></tr></thead>
       <tbody id="ytdUnitBody"></tbody>
       <tfoot id="ytdUnitFoot"></tfoot>
     </table>
+    <div class="note" style="margin-top:12px">💡 <b>1인 1일 지원 식비 = 1끼당 총단가 × 1인 1일 평균 끼니수</b> — 한 사람이 하루 평균 1끼보다 많이 먹으면(끼니수&gt;1) 1인 1일 지원액이 끼당 단가보다 커집니다. <span style="color:var(--muted)">(끼니수 = 식수 ÷ (정산인원 × 영업일))</span></div>
   </div>
 </div>
 <div class="row cols-1">
@@ -796,14 +797,16 @@ function renderYTD() {
     const t1 = m.meals.actual > 0 ? Math.round(m.cost.total / m.meals.actual) : 0;
     const p1 = m.headcount    > 0 ? Math.round(m.cost.food  / m.headcount)    : 0;
     const d1 = (m.headcount > 0 && m.businessDays > 0) ? Math.round(m.cost.total / m.headcount / m.businessDays) : 0;
-    return `<tr><td>${m.label.replace(latestYear + '년 ', '')}</td><td>${fmt(f1)}원</td><td>${fmt(t1)}원</td><td>${fmt(p1)}원</td><td>${fmt(d1)}원</td></tr>`;
+    const mpd = (m.headcount > 0 && m.businessDays > 0) ? (m.meals.actual / (m.headcount * m.businessDays)) : 0;
+    return `<tr><td>${m.label.replace(latestYear + '년 ', '')}</td><td>${fmt(f1)}원</td><td>${fmt(t1)}원</td><td>${fmt(p1)}원</td><td>${fmt(d1)}원</td><td>${mpd.toFixed(2)}끼</td></tr>`;
   }).join('');
-  const avgF1 = ytdMeals      > 0 ? Math.round(ytdFood   / ytdMeals)      : 0;
-  const avgT1 = ytdMeals      > 0 ? Math.round(ytdSupply / ytdMeals)      : 0;
-  const avgP1 = ytdHead       > 0 ? Math.round(ytdFood   / ytdHead)       : 0;
-  const avgD1 = ytdPersonDays > 0 ? Math.round(ytdSupply / ytdPersonDays) : 0;
+  const avgF1  = ytdMeals      > 0 ? Math.round(ytdFood   / ytdMeals)      : 0;
+  const avgT1  = ytdMeals      > 0 ? Math.round(ytdSupply / ytdMeals)      : 0;
+  const avgP1  = ytdHead       > 0 ? Math.round(ytdFood   / ytdHead)       : 0;
+  const avgD1  = ytdPersonDays > 0 ? Math.round(ytdSupply / ytdPersonDays) : 0;
+  const avgMpd = ytdPersonDays > 0 ? (ytdMeals / ytdPersonDays)            : 0;
   document.getElementById('ytdUnitFoot').innerHTML =
-    `<tr><td>누계평균</td><td>${fmt(avgF1)}원</td><td>${fmt(avgT1)}원</td><td>${fmt(avgP1)}원</td><td>${fmt(avgD1)}원</td></tr>`;
+    `<tr><td>누계평균</td><td>${fmt(avgF1)}원</td><td>${fmt(avgT1)}원</td><td>${fmt(avgP1)}원</td><td>${fmt(avgD1)}원</td><td>${avgMpd.toFixed(2)}끼</td></tr>`;
 
   // 월별 1끼당 단가 요소 분해 (누적 막대) — 식수 감소 시 인건비 희석 효과를 시각화
   const umLabels = ytdKeys.map(k => rec(k).label.replace(latestYear + '년 ', ''));
