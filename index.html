@@ -359,6 +359,24 @@ tfoot td{font-weight:700;background:#f1f5f9;border-top:2px solid var(--line)}
     <div class="note" style="margin-top:12px">실부담 = 정산 공급가 + 임차료 + 관리비. 임차료·관리비는 정산서에 포함되지 않은 회사 추가 부담분입니다. <span style="color:var(--muted)">(비워두면 0 처리 · 관리자만 입력)</span></div>
   </div>
 </div>
+<div class="row cols-1">
+  <div class="card">
+    <h3>조/중/석 1인 1일 식자재비·식대지원 (가정 배분 추정)</h3>
+    <div class="desc" id="mealTypeDesc"></div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px;font-size:13px">
+      <span style="color:var(--muted)">끼당 상대단가 가중치:</span>
+      <label>조식 <input type="number" id="wtM" value="0.7" min="0" step="0.1" oninput="renderMealType()" style="width:64px;text-align:right;padding:4px 6px;border:1px solid var(--line);border-radius:6px"></label>
+      <label>중식 <input type="number" id="wtL" value="1.0" min="0" step="0.1" oninput="renderMealType()" style="width:64px;text-align:right;padding:4px 6px;border:1px solid var(--line);border-radius:6px"></label>
+      <label>석식 <input type="number" id="wtD" value="1.0" min="0" step="0.1" oninput="renderMealType()" style="width:64px;text-align:right;padding:4px 6px;border:1px solid var(--line);border-radius:6px"></label>
+    </div>
+    <table>
+      <thead><tr><th>끼니</th><th>누계 식수</th><th>1인 1일 참여(회)</th><th>추정 1인 1일 식자재비</th><th>추정 1인 1일 식대지원</th></tr></thead>
+      <tbody id="mealTypeBody"></tbody>
+      <tfoot id="mealTypeFoot"></tfoot>
+    </table>
+    <div class="note" style="margin-top:12px">⚠ 끼니별 금액은 원천 데이터에 없어 <b>끼니 식수 × 가정 가중치</b>로 배분 추정한 값입니다. 식자재비는 주식(조/중/석) 식자재비를, 식대지원은 주식 몫 공급가(공급가×주식식수비율)를 배분합니다. 가중치는 끼당 상대단가 가정이며 조정 가능합니다.</div>
+  </div>
+</div>
 
 <!-- ══ 월별 상세 ══ -->
 <div class="section-label" id="monthDetailLabel">📋 상세</div>
@@ -722,6 +740,7 @@ function renderCumulative() {
 
   renderYTD();
   renderExtra();
+  renderMealType();
 }
 
 /* ══════════════════════════════════════════════════
@@ -938,6 +957,63 @@ function saveExtra() {
   } catch (e) {
     if (msg) msg.textContent = '❌ 저장 실패: ' + e.message;
   }
+}
+
+/* ══════════════════════════════════════════════════
+   조/중/석 1인 1일 식자재비·식대지원 (가정 가중 배분 추정)
+   - 식자재비 base: 주식(조/중/석) 식자재비 = perMealCategory '일반식 (주식)'
+   - 식대지원 base: 주식 몫 공급가 = 공급가 × (주식식수 ÷ 총실식수)
+   - 끼니 배분: 식수 × 가중치 비율 (가중치는 끼당 상대단가 가정, 화면 조정)
+══════════════════════════════════════════════════ */
+function renderMealType() {
+  const wMEl = document.getElementById('wtM');
+  if (!wMEl) return;
+  const allKeys = DISPLAY_DATA.months;
+  if (!allKeys.length) return;
+  const latestYear = allKeys[allKeys.length - 1].split('-')[0];
+  const keys = allKeys.filter(k => k.startsWith(latestYear));
+  if (!keys.length) return;
+
+  // 저장된 가중치 1회 로드 (기기별 분석 가정)
+  if (!renderMealType._loaded) {
+    try {
+      const s = JSON.parse(localStorage.getItem('chaeum_mealwt_v1') || 'null');
+      if (s) { wMEl.value = s.M; document.getElementById('wtL').value = s.L; document.getElementById('wtD').value = s.D; }
+    } catch (e) {}
+    renderMealType._loaded = true;
+  }
+  const wM = Math.max(0, Number(wMEl.value) || 0);
+  const wL = Math.max(0, Number(document.getElementById('wtL').value) || 0);
+  const wD = Math.max(0, Number(document.getElementById('wtD').value) || 0);
+  try { localStorage.setItem('chaeum_mealwt_v1', JSON.stringify({ M: wM, L: wL, D: wD })); } catch (e) {}
+
+  let cM = 0, cL = 0, cD = 0, mainFood = 0, mainSupply = 0, pd = 0;
+  keys.forEach(k => {
+    const m = rec(k);
+    const mb = m.mealBreakdown || [];
+    const at = i => (mb[i] && mb[i].actual) || 0;
+    cM += at(0); cL += at(1) + at(2); cD += at(3);
+    const main = (m.perMealCategory && m.perMealCategory[0]) || { foodCost: 0, mealCount: 0 };
+    mainFood += main.foodCost || 0;
+    mainSupply += m.meals.actual > 0 ? Math.round(m.cost.total * (main.mealCount || 0) / m.meals.actual) : 0;
+    pd += (m.headcount || 0) * (m.businessDays || 0);
+  });
+
+  const wsum = cM * wM + cL * wL + cD * wD;
+  const rows = [['조식', cM, wM], ['중식 (A+B)', cL, wL], ['석식', cD, wD]].map(([nm, c, w]) => {
+    const factor = wsum > 0 ? (c * w) / wsum : 0;
+    const foodPD = pd > 0 ? Math.round(mainFood * factor / pd) : 0;
+    const supPD  = pd > 0 ? Math.round(mainSupply * factor / pd) : 0;
+    const join   = pd > 0 ? (c / pd) : 0;
+    return `<tr><td>${nm}</td><td>${fmt(c)}</td><td>${join.toFixed(3)}회</td><td>${fmt(foodPD)}원</td><td>${fmt(supPD)}원</td></tr>`;
+  }).join('');
+  document.getElementById('mealTypeBody').innerHTML = rows;
+
+  const tot = cM + cL + cD;
+  document.getElementById('mealTypeFoot').innerHTML =
+    `<tr><td>주식 합계 (조+중+석)</td><td>${fmt(tot)}</td><td>${pd > 0 ? (tot / pd).toFixed(3) : '0'}회</td><td>${fmt(pd > 0 ? Math.round(mainFood / pd) : 0)}원</td><td>${fmt(pd > 0 ? Math.round(mainSupply / pd) : 0)}원</td></tr>`;
+  document.getElementById('mealTypeDesc').textContent =
+    `${latestYear}년 ${keys.length}개월 누계 · 주식(조/중/석) 한정 · 끼당 가중치 ${wM}:${wL}:${wD} 기준 배분 추정`;
 }
 
 /* ══════════════════════════════════════════════════
