@@ -875,7 +875,7 @@ function renderExtra() {
     sRent += rent; sMaint += maint; sSupply += m.cost.total; sMeals += m.meals.actual; sPD += m.headcount * m.businessDays;
     const mn = m.label.replace(latestYear + '년 ', '');
     const inputCell = (v, fld) => IS_ADMIN
-      ? `<input type="number" min="0" step="10000" data-mk="${k}" data-fld="${fld}" value="${v || ''}" placeholder="0" style="width:120px;text-align:right;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px">`
+      ? `<input type="text" inputmode="numeric" data-mk="${k}" data-fld="${fld}" value="${v ? v.toLocaleString('ko-KR') : ''}" placeholder="0" oninput="fmtNumInput(this)" style="width:130px;text-align:right;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px">`
       : fmt(v);
     return `<tr><td>${mn}</td><td>${inputCell(rent,'rent')}</td><td>${inputCell(maint,'maint')}</td><td>${fmt(real)}</td><td>${fmt(perMeal)}원</td><td>${fmt(perPD)}원</td></tr>`;
   }).join('');
@@ -912,11 +912,18 @@ function renderExtra() {
     : '';
 }
 
+// 입력 중 천단위 콤마 자동 적용 (type=text 라 number보다 표시 자유로움)
+function fmtNumInput(el) {
+  const raw = String(el.value).replace(/[^0-9]/g, '');
+  el.value = raw ? Number(raw).toLocaleString('ko-KR') : '';
+}
+
 function saveExtra() {
   const byMonth = {};
   document.querySelectorAll('#extraTableBody input[data-mk]').forEach(inp => {
     const k = inp.dataset.mk;
-    (byMonth[k] = byMonth[k] || {})[inp.dataset.fld] = Math.max(0, Math.round(Number(inp.value) || 0));
+    const num = Math.max(0, Math.round(Number(String(inp.value).replace(/[^0-9]/g, '')) || 0));
+    (byMonth[k] = byMonth[k] || {})[inp.dataset.fld] = num;
   });
   const msg = document.getElementById('extraSaveMsg');
   try {
