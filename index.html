@@ -371,14 +371,14 @@ details.info .note{margin-top:6px}
 </div>
 <div class="row cols-1">
   <div class="card">
-    <h3>끼니별 1인 1일 식자재비·식대지원 (전체 끼니)</h3>
+    <h3>조/중/석 1인 1일 식자재비·식대지원 (간편식·샐러드·라면 반영)</h3>
     <div class="desc" id="mealTypeDesc"></div>
     <table>
       <thead><tr><th>끼니</th><th>누계 식수</th><th>1인 1일 참여(회)</th><th>추정 1인 1일 식자재비</th><th>추정 1인 1일 식대지원</th></tr></thead>
       <tbody id="mealTypeBody"></tbody>
       <tfoot id="mealTypeFoot"></tfoot>
     </table>
-    <details class="info"><summary>배분 방식 (전체 끼니 포함 · 합계는 월별 핵심 단가지표와 일치)</summary><div class="note"><b>전체 끼니(조/중/석·간편식·라면)</b>를 포함하므로 합계가 '월별 핵심 단가지표'(전체 기준)와 일치합니다. <b>식자재비</b>: 간편식·라면은 분류별 실비, 조/중/석은 주식 식자재비를 끼니 식사인원(식수) 비례로 분할. <b>식대지원</b>: 공급가를 끼니 식수 비례로 배분. 계약상 끼당 단가가 없어 조/중/석 내부는 끼당 단가 동일 가정에 따른 추정치입니다.</div></details>
+    <details class="info"><summary>끼니 분류·배분 방식 (합계는 월별 핵심 단가지표와 일치)</summary><div class="note"><b>끼니 분류</b>: 간편식→조식, 샐러드→중식, 라면은 원천 자료의 조/중/석 식수로 분리 반영. 전체 끼니를 포함하므로 합계가 '월별 핵심 단가지표'와 일치합니다. <b>식자재비·식대지원</b>은 총액(식자재비/공급가)을 끼니 식수 비례로 배분합니다(끼당 단가 동일 가정). <b>⚠ 라면의 끼니 분리는 재업로드한 데이터부터 정확 반영</b>되며, 이전 데이터는 근사 표시됩니다.</div></details>
   </div>
 </div>
 
@@ -964,11 +964,11 @@ function saveExtra() {
 }
 
 /* ══════════════════════════════════════════════════
-   끼니별 1인 1일 식자재비·식대지원 (전체 끼니 포함)
-   - 식자재비: 간편식·라면은 분류별 실비(perMealCategory), 조/중/석은 주식
-     식자재비를 끼니 식수 비례로 분할 → 합계 = 총 식자재비
-   - 식대지원: 공급가를 끼니 식수 비례로 배분 → 합계 = 총 공급가
-   → 합계가 월별 핵심 단가지표(전체 기준)와 일치
+   끼니별(조/중/석) 1인 1일 식자재비·식대지원 — 전체 끼니 반영
+   - 끼니 분류: 간편식→조식, 샐러드→중식, 라면은 원천의 조/중/석 식수로 분리
+     (parser의 mealByPeriod 사용. 구버전 레코드는 mealMix로 근사 + 재업로드 안내)
+   - 식자재비/식대지원: 총액을 끼니 식수 비례로 배분 → 합계 = 총 식자재비/공급가
+     (끼당 단가 동일 가정 / 합계는 월별 핵심 단가지표와 일치)
 ══════════════════════════════════════════════════ */
 function renderMealType() {
   if (!document.getElementById('mealTypeBody')) return;
@@ -978,45 +978,50 @@ function renderMealType() {
   const keys = allKeys.filter(k => k.startsWith(latestYear));
   if (!keys.length) return;
 
-  let cM = 0, cL = 0, cD = 0, mainFood = 0, convCnt = 0, convFood = 0, ramenCnt = 0, ramenFood = 0, supply = 0, pd = 0;
+  let bk = 0, ln = 0, dn = 0, food = 0, supply = 0, pd = 0, needReupload = false;
   keys.forEach(k => {
     const m = rec(k);
-    const mb = m.mealBreakdown || [];
-    const at = i => (mb[i] && mb[i].actual) || 0;
-    cM += at(0); cL += at(1) + at(2); cD += at(3);
-    const pc = m.perMealCategory || [];
-    mainFood  += (pc[0] && pc[0].foodCost)  || 0;
-    convCnt   += (pc[1] && pc[1].mealCount) || 0;
-    convFood  += (pc[1] && pc[1].foodCost)  || 0;
-    ramenCnt  += (pc[2] && pc[2].mealCount) || 0;
-    ramenFood += (pc[2] && pc[2].foodCost)  || 0;
+    const mp = m.mealByPeriod;
+    if (mp) {
+      bk += (mp.breakfast && mp.breakfast.total) || 0;
+      ln += (mp.lunch     && mp.lunch.total)     || 0;
+      dn += (mp.dinner    && mp.dinner.total)    || 0;
+    } else {
+      // 구버전 레코드: mealMix 근사 (라면은 합산뿐이라 조/중/석 비례 분배)
+      needReupload = true;
+      const mm = {}; const lab = (m.mealMix && m.mealMix.labels) || []; const val = (m.mealMix && m.mealMix.values) || [];
+      lab.forEach((l, i) => mm[l] = val[i] || 0);
+      const ramen = mm['라면'] || 0;
+      const b = (mm['조식'] || 0) + (mm['간편식'] || 0);
+      const l = (mm['중식 A'] || 0) + (mm['중식 B'] || 0) + (mm['샐러드/기타'] || 0);
+      const d = (mm['석식'] || 0);
+      const bs = (b + l + d) || 1;
+      bk += b + ramen * b / bs;
+      ln += l + ramen * l / bs;
+      dn += d + ramen * d / bs;
+    }
+    food   += m.cost.food  || 0;
     supply += m.cost.total || 0;
-    pd += (m.headcount || 0) * (m.businessDays || 0);
+    pd     += (m.headcount || 0) * (m.businessDays || 0);
   });
 
-  const mainCnt = cM + cL + cD;
-  const totCnt  = mainCnt + convCnt + ramenCnt;
-  const perMealSupply = totCnt > 0 ? supply / totCnt : 0; // 끼당 공급가(식대) = 식수 비례
-
-  const mk = (nm, cnt, food) => {
-    const foodPD = pd > 0 ? Math.round(food / pd) : 0;
-    const supPD  = pd > 0 ? Math.round(cnt * perMealSupply / pd) : 0;
+  const totCnt = bk + ln + dn;
+  const mk = (nm, cnt) => {
+    const share  = totCnt > 0 ? cnt / totCnt : 0;
+    const foodPD = pd > 0 ? Math.round(food   * share / pd) : 0;
+    const supPD  = pd > 0 ? Math.round(supply * share / pd) : 0;
     const join   = pd > 0 ? (cnt / pd) : 0;
-    return `<tr><td>${nm}</td><td>${fmt(cnt)}</td><td>${join.toFixed(3)}회</td><td>${fmt(foodPD)}원</td><td>${fmt(supPD)}원</td></tr>`;
+    return `<tr><td>${nm}</td><td>${fmt(Math.round(cnt))}</td><td>${join.toFixed(3)}회</td><td>${fmt(foodPD)}원</td><td>${fmt(supPD)}원</td></tr>`;
   };
   document.getElementById('mealTypeBody').innerHTML = [
-    mk('조식', cM, mainCnt > 0 ? mainFood * cM / mainCnt : 0),
-    mk('중식 (A+B)', cL, mainCnt > 0 ? mainFood * cL / mainCnt : 0),
-    mk('석식', cD, mainCnt > 0 ? mainFood * cD / mainCnt : 0),
-    mk('간편식·샐러드', convCnt, convFood),
-    mk('라면 코너', ramenCnt, ramenFood),
+    mk('조식 (+간편식·라면)', bk),
+    mk('중식 (+샐러드·라면)', ln),
+    mk('석식 (+라면)', dn),
   ].join('');
-
-  const totFood = mainFood + convFood + ramenFood;
   document.getElementById('mealTypeFoot').innerHTML =
-    `<tr><td>전체 합계</td><td>${fmt(totCnt)}</td><td>${pd > 0 ? (totCnt / pd).toFixed(3) : '0'}회</td><td>${fmt(pd > 0 ? Math.round(totFood / pd) : 0)}원</td><td>${fmt(pd > 0 ? Math.round(supply / pd) : 0)}원</td></tr>`;
+    `<tr><td>전체 합계</td><td>${fmt(Math.round(totCnt))}</td><td>${pd > 0 ? (totCnt / pd).toFixed(3) : '0'}회</td><td>${fmt(pd > 0 ? Math.round(food / pd) : 0)}원</td><td>${fmt(pd > 0 ? Math.round(supply / pd) : 0)}원</td></tr>`;
   document.getElementById('mealTypeDesc').textContent =
-    `${latestYear}년 ${keys.length}개월 누계 · 전체 끼니 포함(조/중/석·간편식·라면) · 합계는 월별 핵심 단가지표와 일치`;
+    `${latestYear}년 ${keys.length}개월 누계 · 간편식→조식, 샐러드→중식, 라면→끼니별 반영 · 합계는 월별 핵심과 일치${needReupload ? ' · ⚠ 정확 반영 위해 재업로드 권장' : ''}`;
 }
 
 /* ══════════════════════════════════════════════════

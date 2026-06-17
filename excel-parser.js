@@ -359,6 +359,12 @@ function parseChaeumExcel(arrayBuffer) {
       meals:  { prepared: totalPrepared, actual: totalActual },
       mealBreakdown,
       mealMix,
+      // 끼니별 구성 — 간편식→조식, 샐러드→중식, 라면은 원천의 조/중/석 식수로 분리 반영
+      mealByPeriod: {
+        breakfast: { total: mActual + mSnack1 + mSnack2 + mRamen, meal: mActual, snack: mSnack1 + mSnack2, ramen: mRamen },
+        lunch:     { total: laAActual + laBActual + lSalad + lRamen, meal: laAActual + laBActual, salad: lSalad, ramen: lRamen },
+        dinner:    { total: dActual + dRamen + dHotpot, meal: dActual, ramen: dRamen, hotpot: dHotpot }
+      },
       daily,
       suppliers,
       ramen:  { totalCost: ramenTotalCost, mealCount: ramenMealCount, items: ramenItems },
