@@ -435,10 +435,17 @@ details.info .note{margin-top:6px}
     <h3>중식 메뉴별 선호 경향 (일별 A/B 식수 × 식단표)</h3>
     <div class="desc" id="lunchPrefDesc"></div>
     <table>
-      <thead><tr><th>대표 메뉴</th><th>평균 선택률</th><th>등장</th></tr></thead>
+      <thead><tr><th>대표 메뉴</th><th>평균 선택률</th><th>등장</th><th>주요 맞상대</th></tr></thead>
       <tbody id="lunchPrefBody"></tbody>
     </table>
-    <details class="info"><summary>분석 방법·전제</summary><div class="note">각 날짜의 A코너·B코너 <b>대표메뉴</b>에 그날 <b>선택률</b>(코너 식수÷(A+B))을 부여해 메뉴별 평균 선택률을 집계합니다. 50% 초과면 같은 시간 반대 코너보다 더 선택된 경향입니다. 줄 길이·동선 등 교란변수가 있어 <b>경향(상관)</b>으로 해석하세요. 표시되려면 정산 엑셀 <b>재업로드</b>(일별 A/B 식수)와 해당 기간 <b>식단표 등록</b>(식단 분석)이 필요하며, 두 자료의 날짜가 겹쳐야 합니다.</div></details>
+    <details class="info"><summary>분석 방법·근거·전제</summary><div class="note">
+      <b>① 데이터 결합</b>: 정산 엑셀의 <b>일별 중식 A/B 식수</b>와 식단표의 <b>코너별 메뉴</b>를 같은 날짜로 매칭합니다. 부제의 "매칭 N일"은 두 자료가 겹치는 영업일 수입니다.<br>
+      <b>② 하루 선택률</b> = 코너 식수 ÷ (A+B). 그날 A코너 대표메뉴엔 A선택률을, B코너 대표메뉴엔 B선택률을 부여합니다.<br>
+      <b>③ 대표메뉴</b> = 코너 메뉴 중 밥·김치·국·나물·소스 등 <b>반찬을 제외한 첫 메인디시</b>(반찬만 있으면 제외).<br>
+      <b>④ 평균</b> = 메뉴가 등장한 날들의 선택률 평균. <b>2일 이상</b> 등장만 랭킹, <b>50%↑</b>면 그날 반대 코너보다 선호된 경향. ⚠는 표본 3일 미만.<br>
+      <b>⑤ 주요 맞상대</b> = 해당 메뉴가 맞붙은 반대 코너 메뉴(상대평가이므로 맞상대에 따라 값이 달라짐).<br>
+      <b>⚠ 한계</b>: 줄 길이·동선·코너 위치 등 교란변수가 있어 <b>인과가 아닌 경향(상관)</b>입니다. 표본이 적으면 변동이 큽니다. 정확/풍부한 분석엔 전체 월 <b>재업로드</b>(일별 A/B)와 <b>식단표 등록</b>이 모두 필요합니다.
+    </div></details>
   </div>
 </div>
 
@@ -1225,50 +1232,60 @@ function renderLunchMenuPref() {
 
   const stat = {};
   let joinDays = 0, hasDailyAB = false;
+  const abIsos = new Set();        // 정산 일별 A/B 보유 일수(중식 A+B>0)
   DISPLAY_DATA.months.forEach(k => {
     const dab = rec(k).dailyLunchAB;
     if (!dab) return;
     hasDailyAB = true;
     Object.keys(dab).forEach(iso => {
-      const day = menus[iso];
-      if (!day) return;
       const a = dab[iso].a || 0, b = dab[iso].b || 0, t = a + b;
-      if (t <= 0) return;
+      if (t > 0) abIsos.add(iso);
+      const day = menus[iso];
+      if (!day || t <= 0) return;
       const aMain = _mainDish(day.lunchA), bMain = _mainDish(day.lunchB);
       if (!aMain && !bMain) return;
       joinDays++;
-      if (aMain) { (stat[aMain] = stat[aMain] || { sum: 0, n: 0 }); stat[aMain].sum += a / t; stat[aMain].n++; }
-      if (bMain) { (stat[bMain] = stat[bMain] || { sum: 0, n: 0 }); stat[bMain].sum += b / t; stat[bMain].n++; }
+      if (aMain) { const s = (stat[aMain] = stat[aMain] || { sum: 0, n: 0, opps: [] }); s.sum += a / t; s.n++; if (bMain) s.opps.push(bMain); }
+      if (bMain) { const s = (stat[bMain] = stat[bMain] || { sum: 0, n: 0, opps: [] }); s.sum += b / t; s.n++; if (aMain) s.opps.push(aMain); }
     });
   });
 
-  const msg = t => { elBody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:18px">${t}</td></tr>`; };
+  // 커버리지: 정산 일별 A/B 보유일 ∩ 식단표(중식) 보유일 = 매칭일
+  const menuLunchDays = Object.values(menus).filter(d => (d.lunchA && d.lunchA.length) || (d.lunchB && d.lunchB.length)).length;
+  const abDays = abIsos.size;
+
+  const msg = t => { elBody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">${t}</td></tr>`; };
   if (!hasDailyAB) {
     msg('일별 A/B 식수가 없습니다 — 정산 엑셀을 <b>재업로드</b>하면 분석됩니다 (브라우저 강력 새로고침 후)');
     desc.textContent = '재업로드 필요 (일별 A/B 식수)';
     return;
   }
-  if (!Object.keys(menus).length) {
-    msg('식단표가 없습니다 — <b>식단 분석</b> 페이지에서 해당 기간 식단표를 등록하세요');
-    desc.textContent = '식단표 미등록';
+  if (!menuLunchDays) {
+    msg('식단표(중식)가 없습니다 — <b>식단 분석</b> 페이지에서 해당 기간 식단표를 등록하세요');
+    desc.textContent = `식단표 미등록 (정산 일별 A/B ${abDays}일 보유)`;
     return;
   }
+  const cov = `정산 일별 A/B ${abDays}일 ∩ 식단표 ${menuLunchDays}일 → 매칭 ${joinDays}일`;
   const MIN_N = 2;
-  const ranked = Object.entries(stat).map(([dish, s]) => ({ dish, avg: s.sum / s.n, n: s.n }))
+  const ranked = Object.entries(stat).map(([dish, s]) => ({ dish, avg: s.sum / s.n, n: s.n, opps: s.opps }))
     .filter(x => x.n >= MIN_N).sort((a, b) => b.avg - a.avg);
   if (!joinDays) {
     msg('정산 기간과 식단표 날짜가 겹치지 않습니다 — 같은 기간 식단표를 등록하세요');
-    desc.textContent = '겹치는 날짜 없음';
+    desc.textContent = '겹치는 날짜 없음 · ' + cov;
     return;
   }
   if (!ranked.length) {
-    msg(`매칭 ${joinDays}일 — 2일 이상 반복 등장한 대표메뉴가 없어 랭킹을 낼 수 없습니다`);
-    desc.textContent = `매칭 ${joinDays}일 · 표본 부족`;
+    msg(`2일 이상 반복 등장한 대표메뉴가 없어 랭킹을 낼 수 없습니다 (${cov})`);
+    desc.textContent = cov;
     return;
   }
-  elBody.innerHTML = ranked.slice(0, 10).map((x, i) =>
-    `<tr><td style="text-align:left">${i + 1}. ${x.dish}</td><td>${(x.avg * 100).toFixed(1)}%</td><td>${x.n}일</td></tr>`).join('');
-  desc.textContent = `${joinDays}일 매칭 · 대표메뉴별 평균 선택률 상위 (${MIN_N}일 이상 등장, 50%↑ = 반대 코너보다 선호)`;
+  elBody.innerHTML = ranked.slice(0, 10).map((x, i) => {
+    const uniqOpp = [...new Set(x.opps)];
+    const oppTxt = uniqOpp.slice(0, 2).join(', ') + (uniqOpp.length > 2 ? ` 외 ${uniqOpp.length - 2}` : '');
+    const warn = x.n < 3 ? ' <span style="color:var(--warn)" title="표본 적음(3일 미만)">⚠</span>' : '';
+    return `<tr><td style="text-align:left">${i + 1}. ${x.dish}${warn}</td><td>${(x.avg * 100).toFixed(1)}%</td><td>${x.n}일</td><td style="text-align:left;color:var(--muted);font-size:12px">${oppTxt || '-'}</td></tr>`;
+  }).join('');
+  desc.textContent = `${cov} · 대표메뉴별 평균 선택률 상위 (${MIN_N}일↑ 등장, 50%↑ = 반대 코너보다 선호, ⚠=표본 적음)`;
 }
 
 /* ══════════════════════════════════════════════════
