@@ -218,6 +218,7 @@ function parseChaeumExcel(arrayBuffer) {
 
   // 일별 데이터 (헤더 다음 행부터 연속)
   const daily = [];
+  const dailyLunchAB = {}; // ISO(YYYY-MM-DD) → { a: 중식A 실식수, b: 중식B 실식수 } (메뉴 선호 분석용)
   let businessDays = 0;
   let settlementYear = null, settlementMonth = null;
 
@@ -232,6 +233,8 @@ function parseChaeumExcel(arrayBuffer) {
       settlementYear  = ymd.year;
       settlementMonth = ymd.month;
     }
+    const iso = `${ymd.year}-${String(ymd.month).padStart(2, '0')}-${String(ymd.day).padStart(2, '0')}`;
+    dailyLunchAB[iso] = { a: Math.round(_cn(sh식수, cLAA + row) || 0), b: Math.round(_cn(sh식수, cLBA + row) || 0) };
     daily.push([dateStr, Math.round(vPrepared), Math.round(_cn(sh식수, cTA + row) || 0)]);
   }
 
@@ -359,6 +362,7 @@ function parseChaeumExcel(arrayBuffer) {
       meals:  { prepared: totalPrepared, actual: totalActual },
       mealBreakdown,
       mealMix,
+      dailyLunchAB, // 일별 중식 A/B 식수 (메뉴 선호 분석용)
       // 끼니별 구성 — 간편식→조식, 샐러드→중식, 라면은 원천의 조/중/석 식수로 분리 반영
       mealByPeriod: {
         breakfast: { total: mActual + mSnack1 + mSnack2 + mRamen, meal: mActual, snack: mSnack1 + mSnack2, ramen: mRamen },

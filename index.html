@@ -395,7 +395,18 @@ details.info .note{margin-top:6px}
       <tbody id="lunchABBody"></tbody>
       <tfoot id="lunchABFoot"></tfoot>
     </table>
-    <details class="info"><summary>선호도 해석 주의</summary><div class="note">선택률은 그날 메뉴 외에 <b>줄 길이·동선·운영 변수</b>에도 영향받으므로 <b>경향(상관)</b>으로 해석하세요. 메뉴 유형별 선호 분석은 일별 A/B 식수 추출이 필요합니다(2단계).</div></details>
+    <details class="info"><summary>선호도 해석 주의</summary><div class="note">선택률은 그날 메뉴 외에 <b>줄 길이·동선·운영 변수</b>에도 영향받으므로 <b>경향(상관)</b>으로 해석하세요.</div></details>
+  </div>
+</div>
+<div class="row cols-1">
+  <div class="card">
+    <h3>중식 메뉴별 선호 경향 (일별 A/B 식수 × 식단표)</h3>
+    <div class="desc" id="lunchPrefDesc"></div>
+    <table>
+      <thead><tr><th>대표 메뉴</th><th>평균 선택률</th><th>등장</th></tr></thead>
+      <tbody id="lunchPrefBody"></tbody>
+    </table>
+    <details class="info"><summary>분석 방법·전제</summary><div class="note">각 날짜의 A코너·B코너 <b>대표메뉴</b>에 그날 <b>선택률</b>(코너 식수÷(A+B))을 부여해 메뉴별 평균 선택률을 집계합니다. 50% 초과면 같은 시간 반대 코너보다 더 선택된 경향입니다. 줄 길이·동선 등 교란변수가 있어 <b>경향(상관)</b>으로 해석하세요. 표시되려면 정산 엑셀 <b>재업로드</b>(일별 A/B 식수)와 해당 기간 <b>식단표 등록</b>(식단 분석)이 필요하며, 두 자료의 날짜가 겹쳐야 합니다.</div></details>
   </div>
 </div>
 
@@ -704,6 +715,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderCumulative();
   renderMonthly(currentMonth);
   setupDropZone();
+
+  // 식단표(메뉴) 캐시 동기화 → 중식 메뉴별 선호 경향 분석 갱신
+  try {
+    const res = await fetch('/api/menus?action=load', { credentials: 'include' });
+    if (res.ok) {
+      const j = await res.json();
+      if (j && j.ok && j.data && typeof j.data === 'object') {
+        let local = {};
+        try { local = JSON.parse(localStorage.getItem('chaeum_menus_v1') || '{}'); } catch (e) {}
+        localStorage.setItem('chaeum_menus_v1', JSON.stringify({ ...local, ...j.data }));
+        renderLunchMenuPref();
+      }
+    }
+  } catch (e) { /* 메뉴 동기화 실패 — 로컬 캐시로 표시 */ }
 });
 
 /* 다른 기기·탭에서 업로드한 내용을 탭 재활성화 시점에 자동 반영 */
@@ -763,6 +788,7 @@ function renderCumulative() {
   renderExtra();
   renderMealType();
   renderLunchAB();
+  renderLunchMenuPref();
 }
 
 /* ══════════════════════════════════════════════════
@@ -1089,6 +1115,70 @@ function renderLunchAB() {
         return c.dataset.label + ': ' + fmt(c.raw) + '식 (' + (t > 0 ? (c.raw / t * 100).toFixed(1) : '0') + '%)';
       } } } } }
   });
+}
+
+/* ══════════════════════════════════════════════════
+   중식 메뉴별 선호 경향 (2단계) — 일별 A/B 식수 × 식단표 매칭
+   - dailyLunchAB(레코드, 재업로드 필요) × chaeum_menus_v1(식단표) 날짜 매칭
+   - 코너 대표메뉴에 그날 선택률 부여 → 메뉴별 평균 선택률 집계
+══════════════════════════════════════════════════ */
+const _SIDE_RE = /(밥|김치|깍두기|단무지|장아찌|국$|탕$|찌개|장국|된장국|미소국|샐러드|드레싱|요거트|우유|과일|쥬스|주스|음료|커피|시리얼|잼|소스|쌈|장아찌|나물|무침|기타|디저트|후식)/;
+function _mainDish(arr) {
+  if (!Array.isArray(arr) || !arr.length) return null;
+  const main = arr.find(s => s && !_SIDE_RE.test(String(s)));
+  return ((main || arr[0] || '') + '').trim() || null;
+}
+function _menusByIso() {
+  let all = {};
+  try { all = JSON.parse(localStorage.getItem('chaeum_menus_v1') || '{}'); } catch (e) { return {}; }
+  const out = {};
+  Object.values(all).forEach(week => {
+    if (!week || typeof week !== 'object') return;
+    Object.values(week).forEach(day => { if (day && day.date) out[day.date] = day; });
+  });
+  return out;
+}
+function renderLunchMenuPref() {
+  const elBody = document.getElementById('lunchPrefBody');
+  if (!elBody) return;
+  const desc = document.getElementById('lunchPrefDesc');
+  const menus = _menusByIso();
+
+  const stat = {};
+  let joinDays = 0, hasDailyAB = false;
+  DISPLAY_DATA.months.forEach(k => {
+    const dab = rec(k).dailyLunchAB;
+    if (!dab) return;
+    hasDailyAB = true;
+    Object.keys(dab).forEach(iso => {
+      const day = menus[iso];
+      if (!day) return;
+      const a = dab[iso].a || 0, b = dab[iso].b || 0, t = a + b;
+      if (t <= 0) return;
+      const aMain = _mainDish(day.lunchA), bMain = _mainDish(day.lunchB);
+      if (!aMain && !bMain) return;
+      joinDays++;
+      if (aMain) { (stat[aMain] = stat[aMain] || { sum: 0, n: 0 }); stat[aMain].sum += a / t; stat[aMain].n++; }
+      if (bMain) { (stat[bMain] = stat[bMain] || { sum: 0, n: 0 }); stat[bMain].sum += b / t; stat[bMain].n++; }
+    });
+  });
+
+  if (!hasDailyAB) {
+    elBody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:18px">일별 A/B 식수가 없습니다 — 정산 엑셀을 <b>재업로드</b>하면 분석됩니다</td></tr>`;
+    desc.textContent = '재업로드 필요 (일별 A/B 식수)';
+    return;
+  }
+  const MIN_N = 2;
+  const ranked = Object.entries(stat).map(([dish, s]) => ({ dish, avg: s.sum / s.n, n: s.n }))
+    .filter(x => x.n >= MIN_N).sort((a, b) => b.avg - a.avg);
+  if (!joinDays || !ranked.length) {
+    elBody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:18px">매칭되는 날짜의 식단표가 부족합니다 — 식단 분석에서 해당 기간 식단표를 등록하세요 (매칭 ${joinDays}일)</td></tr>`;
+    desc.textContent = `매칭 ${joinDays}일 · 데이터 부족`;
+    return;
+  }
+  elBody.innerHTML = ranked.slice(0, 10).map((x, i) =>
+    `<tr><td style="text-align:left">${i + 1}. ${x.dish}</td><td>${(x.avg * 100).toFixed(1)}%</td><td>${x.n}일</td></tr>`).join('');
+  desc.textContent = `${joinDays}일 매칭 · 대표메뉴별 평균 선택률 상위 (${MIN_N}일 이상 등장, 50%↑ = 반대 코너보다 선호)`;
 }
 
 /* ══════════════════════════════════════════════════
