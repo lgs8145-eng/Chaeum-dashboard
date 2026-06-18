@@ -381,6 +381,23 @@ details.info .note{margin-top:6px}
     <details class="info"><summary>끼니 분류·배분 방식 (합계는 월별 핵심 단가지표와 일치)</summary><div class="note"><b>끼니 분류</b>: 간편식→조식, 샐러드→중식, 라면은 원천 자료의 조/중/석 식수로 분리 반영. 전체 끼니를 포함하므로 합계가 '월별 핵심 단가지표'와 일치합니다. <b>식자재비·식대지원</b>은 총액(식자재비/공급가)을 끼니 식수 비례로 배분합니다(끼당 단가 동일 가정). <b>⚠ 라면의 끼니 분리는 재업로드한 데이터부터 정확 반영</b>되며, 이전 데이터는 근사 표시됩니다.</div></details>
   </div>
 </div>
+<div class="row cols-2c">
+  <div class="card">
+    <h3>중식 A/B 코너 선호도</h3>
+    <div class="desc" id="lunchABDesc"></div>
+    <div class="chart-wrap"><canvas id="lunchABChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>중식 A/B 월별 선택률</h3>
+    <div class="desc">중식 A·B 코너 식수와 선택 비중</div>
+    <table>
+      <thead><tr><th>월</th><th>A코너 식수</th><th>B코너 식수</th><th>A 선택률</th><th>B 선택률</th></tr></thead>
+      <tbody id="lunchABBody"></tbody>
+      <tfoot id="lunchABFoot"></tfoot>
+    </table>
+    <details class="info"><summary>선호도 해석 주의</summary><div class="note">선택률은 그날 메뉴 외에 <b>줄 길이·동선·운영 변수</b>에도 영향받으므로 <b>경향(상관)</b>으로 해석하세요. 메뉴 유형별 선호 분석은 일별 A/B 식수 추출이 필요합니다(2단계).</div></details>
+  </div>
+</div>
 
 <!-- ══ 월별 상세 ══ -->
 <div class="section-label" id="monthDetailLabel">📋 상세</div>
@@ -745,6 +762,7 @@ function renderCumulative() {
   renderYTD();
   renderExtra();
   renderMealType();
+  renderLunchAB();
 }
 
 /* ══════════════════════════════════════════════════
@@ -1022,6 +1040,55 @@ function renderMealType() {
     `<tr><td>전체 합계</td><td>${fmt(Math.round(totCnt))}</td><td>${pd > 0 ? (totCnt / pd).toFixed(3) : '0'}회</td><td>${fmt(pd > 0 ? Math.round(food / pd) : 0)}원</td><td>${fmt(pd > 0 ? Math.round(supply / pd) : 0)}원</td></tr>`;
   document.getElementById('mealTypeDesc').textContent =
     `${latestYear}년 ${keys.length}개월 누계 · 간편식→조식, 샐러드→중식, 라면→끼니별 반영 · 합계는 월별 핵심과 일치${needReupload ? ' · ⚠ 정확 반영 위해 재업로드 권장' : ''}`;
+}
+
+/* ══════════════════════════════════════════════════
+   중식 A/B 코너 선호도 (월별 선택률) — mealBreakdown의 중식 A·B 식수 기반
+══════════════════════════════════════════════════ */
+function renderLunchAB() {
+  if (!document.getElementById('lunchABBody')) return;
+  const allKeys = DISPLAY_DATA.months;
+  if (!allKeys.length) return;
+  const latestYear = allKeys[allKeys.length - 1].split('-')[0];
+  const keys = allKeys.filter(k => k.startsWith(latestYear));
+  if (!keys.length) return;
+
+  const labels = [], aData = [], bData = [];
+  let sumA = 0, sumB = 0;
+  document.getElementById('lunchABBody').innerHTML = keys.map(k => {
+    const m = rec(k);
+    const mb = m.mealBreakdown || [];
+    const a = (mb[1] && mb[1].actual) || 0;  // 중식 A
+    const b = (mb[2] && mb[2].actual) || 0;  // 중식 B
+    sumA += a; sumB += b;
+    const t = a + b;
+    const mn = m.label.replace(latestYear + '년 ', '');
+    labels.push(mn); aData.push(a); bData.push(b);
+    return `<tr><td>${mn}</td><td>${fmt(a)}</td><td>${fmt(b)}</td><td>${t > 0 ? (a / t * 100).toFixed(1) : '0'}%</td><td>${t > 0 ? (b / t * 100).toFixed(1) : '0'}%</td></tr>`;
+  }).join('');
+
+  const totT = sumA + sumB;
+  const totAp = totT > 0 ? (sumA / totT * 100) : 0;
+  const totBp = totT > 0 ? (sumB / totT * 100) : 0;
+  document.getElementById('lunchABFoot').innerHTML =
+    `<tr><td>누계</td><td>${fmt(sumA)}</td><td>${fmt(sumB)}</td><td>${totAp.toFixed(1)}%</td><td>${totBp.toFixed(1)}%</td></tr>`;
+  const winner = totAp >= totBp ? 'A코너' : 'B코너';
+  document.getElementById('lunchABDesc').textContent =
+    `${latestYear}년 ${keys.length}개월 누계 · A ${totAp.toFixed(1)}% : B ${totBp.toFixed(1)}% — ${winner} 선호 (격차 ${Math.abs(totAp - totBp).toFixed(1)}%p)`;
+
+  setChart('lunchABChart', {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label: '중식 A', data: aData, backgroundColor: '#FF5500', stack: 'lab' },
+      { label: '중식 B', data: bData, backgroundColor: '#7c3aed', stack: 'lab' },
+    ]},
+    options: { ...BASE_OPTS,
+      scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: v => fmt(v) + '식' } } },
+      plugins: { ...BASE_OPTS.plugins, tooltip: { callbacks: { label: c => {
+        const t = (aData[c.dataIndex] || 0) + (bData[c.dataIndex] || 0);
+        return c.dataset.label + ': ' + fmt(c.raw) + '식 (' + (t > 0 ? (c.raw / t * 100).toFixed(1) : '0') + '%)';
+      } } } } }
+  });
 }
 
 /* ══════════════════════════════════════════════════
