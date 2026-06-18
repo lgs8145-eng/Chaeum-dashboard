@@ -1134,7 +1134,13 @@ function _menusByIso() {
   const out = {};
   Object.values(all).forEach(week => {
     if (!week || typeof week !== 'object') return;
-    Object.values(week).forEach(day => { if (day && day.date) out[day.date] = day; });
+    // 저장 구조: { weekKey: { label, days:[ {date, lunchA, lunchB, ...} ] } }
+    if (Array.isArray(week.days)) {
+      week.days.forEach(day => { if (day && day.date) out[day.date] = day; });
+    } else {
+      // 방어적: { iso: day } 구조도 지원
+      Object.values(week).forEach(day => { if (day && day.date) out[day.date] = day; });
+    }
   });
   return out;
 }
@@ -1163,17 +1169,28 @@ function renderLunchMenuPref() {
     });
   });
 
+  const msg = t => { elBody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:18px">${t}</td></tr>`; };
   if (!hasDailyAB) {
-    elBody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:18px">일별 A/B 식수가 없습니다 — 정산 엑셀을 <b>재업로드</b>하면 분석됩니다</td></tr>`;
+    msg('일별 A/B 식수가 없습니다 — 정산 엑셀을 <b>재업로드</b>하면 분석됩니다 (브라우저 강력 새로고침 후)');
     desc.textContent = '재업로드 필요 (일별 A/B 식수)';
+    return;
+  }
+  if (!Object.keys(menus).length) {
+    msg('식단표가 없습니다 — <b>식단 분석</b> 페이지에서 해당 기간 식단표를 등록하세요');
+    desc.textContent = '식단표 미등록';
     return;
   }
   const MIN_N = 2;
   const ranked = Object.entries(stat).map(([dish, s]) => ({ dish, avg: s.sum / s.n, n: s.n }))
     .filter(x => x.n >= MIN_N).sort((a, b) => b.avg - a.avg);
-  if (!joinDays || !ranked.length) {
-    elBody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:18px">매칭되는 날짜의 식단표가 부족합니다 — 식단 분석에서 해당 기간 식단표를 등록하세요 (매칭 ${joinDays}일)</td></tr>`;
-    desc.textContent = `매칭 ${joinDays}일 · 데이터 부족`;
+  if (!joinDays) {
+    msg('정산 기간과 식단표 날짜가 겹치지 않습니다 — 같은 기간 식단표를 등록하세요');
+    desc.textContent = '겹치는 날짜 없음';
+    return;
+  }
+  if (!ranked.length) {
+    msg(`매칭 ${joinDays}일 — 2일 이상 반복 등장한 대표메뉴가 없어 랭킹을 낼 수 없습니다`);
+    desc.textContent = `매칭 ${joinDays}일 · 표본 부족`;
     return;
   }
   elBody.innerHTML = ranked.slice(0, 10).map((x, i) =>
